@@ -26,6 +26,22 @@ class ILA:
             host = "10.10.10.27"
         elif device == "ila_3":
             host = "10.10.10.26"
+        elif device == "ila_4":
+            host = "10.10.10.25"
+        elif device == "ila_5":
+            host = "10.10.10.24"
+        elif device == "ila_6":
+            host = "10.10.10.23"
+        elif device == "ila_7":
+            host = "10.10.10.22"
+        elif device == "ila_8":
+            host = "10.10.10.21"
+        elif device == "ila_9":
+            host = "10.10.10.20"
+        elif device == "ila_10":
+            host = "10.10.10.19"
+        elif device == "ila_11":
+            host = "10.10.10.18"
 
         else:
             raise ValueError("Invalid device name, please enter ila_1, ila_2 or ila_3")
