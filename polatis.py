@@ -647,7 +647,7 @@ class Polatis:
         self.get_all_power()
 
     def report_all(self):
-        print("REPORTING FUNCTION CALLED")
+        print("REPORTING FUNCTION CALLED - 1")
         try:
             print(self.power.keys())
         except Exception as e:
