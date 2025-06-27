@@ -649,11 +649,15 @@ class Polatis:
     def report_all(self):
         print("REPORTING FUNCTION CALLED")
         for i in sorted(self.power.keys()):
-            patch = self.patch.get(i, 0)
-            shutter = self.shutter.get(i, "")
-            monmode = self.monmode.get(i, "")
-            wavelength = self.wavelength.get(i, 0.0)
-            offset = self.offset.get(i, 0.0)
-            atime = self.atime.get(i, 0.0)
-            power = self.power.get(i, 0.0)
+            print(i)
+            try:
+                patch = self.patch.get(i, 0)
+                shutter = self.shutter.get(i, "")
+                monmode = self.monmode.get(i, "")
+                wavelength = self.wavelength.get(i, 0.0)
+                offset = self.offset.get(i, 0.0)
+                atime = self.atime.get(i, 0.0)
+                power = self.power.get(i, 0.0)
+            except Exception as e:
+                print(f"The key {i} failed: {e}")
             print(i, patch, shutter, monmode, wavelength, offset, atime, power)
