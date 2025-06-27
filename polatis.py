@@ -654,6 +654,7 @@ class Polatis:
             print(f"self.power.keys() failed: {e}")
 
         for i in sorted(self.power.keys()):
+            return_dict = {}
             print(i)
             try:
                 patch = self.patch.get(i, 0)
@@ -666,3 +667,5 @@ class Polatis:
             except Exception as e:
                 print(f"The key {i} failed: {e}")
             print(i, patch, shutter, monmode, wavelength, offset, atime, power)
+            dict[i] = [patch, shutter, monmode, wavelength, offset, atime, power]
+        return return_dict
