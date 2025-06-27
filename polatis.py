@@ -652,9 +652,9 @@ class Polatis:
             print(self.power.keys())
         except Exception as e:
             print(f"self.power.keys() failed: {e}")
-
+        return_dict = {}
         for i in sorted(self.power.keys()):
-            return_dict = {}
+            
             print(i)
             try:
                 patch = self.patch.get(i, 0)
