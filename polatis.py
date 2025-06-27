@@ -648,6 +648,11 @@ class Polatis:
 
     def report_all(self):
         print("REPORTING FUNCTION CALLED")
+        try:
+            print(self.power.keys())
+        except Exception as e:
+            print(f"self.power.keys() failed: {e}")
+
         for i in sorted(self.power.keys()):
             print(i)
             try:
