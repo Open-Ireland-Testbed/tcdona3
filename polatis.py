@@ -647,6 +647,7 @@ class Polatis:
         self.get_all_power()
 
     def report_all(self):
+        print("REPORTING FUNCTION CALLED")
         for i in sorted(self.power.keys()):
             patch = self.patch.get(i, 0)
             shutter = self.shutter.get(i, "")
