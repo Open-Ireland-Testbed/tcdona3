@@ -648,14 +648,8 @@ class Polatis:
 
     def report_all(self):
         print("REPORTING FUNCTION CALLED - 1")
-        try:
-            print(self.power.keys())
-        except Exception as e:
-            print(f"self.power.keys() failed: {e}")
         return_dict = {}
         for i in sorted(self.power.keys()):
-            
-            print(i)
             try:
                 patch = self.patch.get(i, 0)
                 shutter = self.shutter.get(i, "")
