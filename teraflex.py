@@ -177,8 +177,8 @@ class TFlex:
         :return: dictionary containing the current configuration
         :rtype: dict
         """
-
-        return self._config
+        elem = self._config
+        return etree.tostring(elem, pretty_print=True, encoding="utf-8")
 
     def __get_config(self):  # This should be done in a more efficient way
         response = self.get_interface()
