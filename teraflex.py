@@ -5,6 +5,8 @@ import logging
 import time
 import sys
 from .utils import check_patch_owners
+from lxml import etree
+import lxml.etree
 
 
 class TFlex:
