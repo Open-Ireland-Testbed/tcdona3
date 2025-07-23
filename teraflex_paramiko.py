@@ -3,7 +3,7 @@ import time
 import re
 from typing import Dict, Any
 
-PROMPT_REGEX = r"[>#] $"
+PROMPT_PATTERN = r"[>#]\s*$"
 
 DEVICE_MAP = {
     "tf_1": {"ip": "10.10.10.91", "line_port": "1/1/n1"},
