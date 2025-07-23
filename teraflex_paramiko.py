@@ -14,6 +14,7 @@ DEVICE_MAP = {
 
 class TeraflexSSH:
     def __init__(self, tf_name: str, username: str, password: str, timeout: int = 10):
+        print("Teraflex Paramiko Initialised")
         if tf_name not in DEVICE_MAP:
             raise ValueError(f"Unknown TFlex device '{tf_name}'")
         cfg = DEVICE_MAP[tf_name]
@@ -28,7 +29,7 @@ class TeraflexSSH:
     def _connect(self):
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.client.connect(self.host, port=self.port, username=self.username,
+        self.client.connect(self.host, username=self.username,
                             password=self.password, timeout=self.timeout,
                             look_for_keys=False, allow_agent=False)
         self.channel = self.client.invoke_shell()
