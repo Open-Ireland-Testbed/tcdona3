@@ -60,8 +60,8 @@ class TeraflexSSH:
         return self._clean_output(raw)
 
     def read_pm_data(self) -> Dict[str, Any]:
-        print("Sending [show rx]...")
-        raw = self._send("show rx")
+        print(f"show interface {self.line_port} opt-phy pm current ...")
+        raw = self._send(f"show interface {self.line_port} opt-phy pm current")
         return self._parse_pm(raw)
 
     @staticmethod
