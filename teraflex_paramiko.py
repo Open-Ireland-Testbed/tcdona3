@@ -71,11 +71,22 @@ class TeraflexSSH:
 
     @staticmethod
     def _parse_pm(raw: str) -> Dict[str, Any]:
-        rx = re.search(r"Rx Power\s*:\s*([-\d.]+) dBm", raw)
-        q  = re.search(r"Q[- ]?factor\s*:\s*([-\d.]+) dB", raw)
+        """
+        Parses only the 'live' PM data from Teraflex CLI output.
+        """
+        # Extract the "live" block only
+        live_block = re.search(r"mon-entity\s+interval\s+pm-profile.*?opt-phy\s+live.*?(?=\r\n\r\n|\Z)", raw, re.DOTALL)
+        if not live_block:
+            return {"rx_power": None, "tx_power": None, "raw_output": raw}
+
+        block = live_block.group(0)
+
+        rx = re.search(r"opt-rx-pwr\s+\S+\s+([-\d.]+)\s*dBm", block)
+        tx = re.search(r"opt-tx-pwr\s+\S+\s+([-\d.]+)\s*dBm", block)
+
         return {
             "rx_power": float(rx.group(1)) if rx else None,
-            "q_factor": float(q.group(1)) if q else None,
-            "raw_output": raw,
+            "tx_power": float(tx.group(1)) if tx else None,
+            "raw_output": block.strip()
         }
 
