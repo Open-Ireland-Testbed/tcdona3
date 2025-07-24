@@ -111,6 +111,8 @@ class TeraflexSSH:
         results = {
             "rx_power":      None,
             "tx_power":      None,
+            "rx_power_15min":   None,
+            "tx_power_15min":   None,
             "snr":           None,
             "osnr":          None,
             "q_factor":      None,
@@ -129,6 +131,17 @@ class TeraflexSSH:
             if m: results["rx_power"] = f"{m.group(1)}"
             m = re.search(r"opt-tx-pwr\s+\S+\s+(-?\d+(\.\d+)?)\s*dBm", blk)
             if m: results["tx_power"] = f"{m.group(1)}"
+
+        phy_15 = re.search(
+            r"mon-entity\s+interval\s+pm-profile.*?opt-phy\s+15min.*?(?=\n\s*\n|\Z)",
+            raw_phy, re.DOTALL
+        )
+        if phy_15:
+            blk15 = phy_15.group(0)
+            m = re.search(r"opt-rx-pwr-mean\s+\S+\s+(-?\d+(\.\d+)?)\s*dBm", blk15)
+            if m: results["rx_power_15min"] = m.group(1)
+            m = re.search(r"opt-tx-pwr-mean\s+\S+\s+(-?\d+(\.\d+)?)\s*dBm", blk15)
+            if m: results["tx_power_15min"] = m.group(1)
 
         # 3) Parse otsia/QualityTF live block (snr, osnr, q_factor)
         #    there are two possible pm-profiles: QualityTF and QualityTF400g16Q…
