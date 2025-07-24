@@ -660,6 +660,6 @@ class Polatis:
                 power = self.power.get(i, 0.0)
             except Exception as e:
                 print(f"The key {i} failed: {e}")
-            print(i, patch, shutter, monmode, wavelength, offset, atime, power)
+            # print(i, patch, shutter, monmode, wavelength, offset, atime, power)
             return_dict[i] = [patch, shutter, monmode, wavelength, offset, atime, power]
         return return_dict
