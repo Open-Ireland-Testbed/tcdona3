@@ -104,6 +104,10 @@ class TeraflexSSH:
         raw_otsi  = self._send(f"show interface {full_if}                   otsia otsi 1 pm current")
         raw_fec   = self._send(f"show interface {full_if}                   otuc4-p pm current")
 
+        print(f"RAW PHY: {raw_phy}")
+        print(f"RAW OTSI: {raw_otsi}")
+        print(f"RAW FEC: {raw_fec}")
+
         results = {
             "rx_power":      None,
             "tx_power":      None,
