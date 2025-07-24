@@ -14,7 +14,7 @@ DEVICE_MAP = {
 
 class TeraflexSSH:
     def __init__(self, tf_name: str, username: str, password: str, timeout: int = 10):
-        print("Teraflex Paramiko Initialised")
+        print("Teraflex Paramiko Initialised...")
         if tf_name not in DEVICE_MAP:
             raise ValueError(f"Unknown TFlex device '{tf_name}'")
         cfg = DEVICE_MAP[tf_name]
@@ -90,8 +90,6 @@ class TeraflexSSH:
             "raw_output": block.strip()
         }
 
-
-    @staticmethod
     def return_current_config(self, logical: str = "ot400") -> Dict[str, Any]:
         """
         SSH to the device, pull PM summary for Rx/Tx, Q‑factor, OSNR, SNR, FEC BER,
@@ -110,7 +108,7 @@ class TeraflexSSH:
         raw = "\n".join(self._send(cmd) for cmd in commands)
         
         print(f"raw return: {raw}")
-        
+
         # Extract only the “live” PM block
         live_match = re.search(
             r"mon-entity\s+interval\s+pm-profile.*?opt-phy\s+live.*?(?=\r\n\r\n|\Z)",
