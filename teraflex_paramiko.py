@@ -92,32 +92,18 @@ class TeraflexSSH:
 
     def return_current_config(self, logical: str = "ot400") -> Dict[str, Any]:
         """
-        SSH to the device, pull PM summary for Rx/Tx, Q‑factor, OSNR, SNR, FEC BER,
-        then parse only the 'live' block.
+        Pull PM data for this device's line port, then parse:
+          • rx_power, tx_power      from opt‑phy live
+          • snr, osnr, q_factor      from otsia/QualityTF live
+          • fec_ber_live, fec_ber_15min  from otuc4-p live & 15min
         """
-        print("return_current_config() called...")
         full_if = f"{self.line_port}/{logical}"
-        print(f"full_if: {full_if}")
-        commands = [
-            f"show interface {self.line_port} opt-phy pm current",    # Tx/Rx power
-            f"show interface {full_if} otsia otsi 1 pm current",      # Q‑factor, OSNR, SNR
-            f"show interface {full_if} otuc4-p pm current"            # FEC BER
-        ]
 
-        # Run each command over SSH, concatenate outputs
-        raw = "\n".join(self._send(cmd) for cmd in commands)
-        
-        print(f"raw return: {raw}")
+        # 1) Grab each block separately
+        raw_phy   = self._send(f"show interface {self.line_port}             opt-phy pm current")
+        raw_otsi  = self._send(f"show interface {full_if}                   otsia otsi 1 pm current")
+        raw_fec   = self._send(f"show interface {full_if}                   otuc4-p pm current")
 
-        # Extract only the “live” PM block
-        live_match = re.search(
-            r"mon-entity\s+interval\s+pm-profile.*?opt-phy\s+live.*?(?=\r\n\r\n|\Z)",
-            raw,
-            re.DOTALL
-        )
-        block = live_match.group(0) if live_match else raw
-
-        # Initialize results
         results = {
             "rx_power":      None,
             "tx_power":      None,
@@ -128,27 +114,39 @@ class TeraflexSSH:
             "fec_ber_15min": None
         }
 
-        # Parse metrics
-        m = re.search(r"opt-rx-pwr\s+\S+\s+(-?\d+(\.\d+)?)\s*dBm", block)
-        if m: results["rx_power"] = m.group(1) + " dBm"
+        # 2) Parse opt-phy live block (rx/tx)
+        phy_blk = re.search(
+            r"mon-entity\s+interval\s+pm-profile.*?opt-phy\s+live.*?(?=\n\s*\n|\Z)",
+            raw_phy, re.DOTALL
+        )
+        if phy_blk:
+            blk = phy_blk.group(0)
+            m = re.search(r"opt-rx-pwr\s+\S+\s+(-?\d+(\.\d+)?)\s*dBm", blk)
+            if m: results["rx_power"] = f"{m.group(1)}"
+            m = re.search(r"opt-tx-pwr\s+\S+\s+(-?\d+(\.\d+)?)\s*dBm", blk)
+            if m: results["tx_power"] = f"{m.group(1)}"
 
-        m = re.search(r"opt-tx-pwr\s+\S+\s+(-?\d+(\.\d+)?)\s*dBm", block)
-        if m: results["tx_power"] = m.group(1) + " dBm"
+        # 3) Parse otsia/QualityTF live block (snr, osnr, q_factor)
+        #    there are two possible pm-profiles: QualityTF and QualityTF400g16Q…
+        #    we'll just scan the entire raw_otsi for the metrics
+        m = re.search(r"signal-to-noise-ratio\s+\S+\s+(\d+(\.\d+)?)\s*dB", raw_otsi)
+        if m: results["snr"] = f"{m.group(1)}"
+        m = re.search(r"optical-signal-to-noise-ratio\s+\S+\s+(\d+(\.\d+)?)\s*dB", raw_otsi)
+        if m: results["osnr"] = f"{m.group(1)}"
+        m = re.search(r"q-factor\s+\S+\s+(\d+(\.\d+)?)\s*dB", raw_otsi)
+        if m: results["q_factor"] = f"{m.group(1)}"
 
-        m = re.search(r"signal-to-noise-ratio\s+\S+\s+(\d+(\.\d+)?)", block)
-        if m: results["snr"] = m.group(1) + " dB"
+        # 4) Parse FEC blocks from raw_fec
+        fec_live = re.search(
+            r"otuc4-p\s+live.*?fec-ber\s+\S+\s+([0-9.eE-]+)",
+            raw_fec, re.DOTALL
+        )
+        if fec_live:
+            results["fec_ber_live"] = fec_live.group(1)
 
-        m = re.search(r"optical-signal-to-noise-ratio\s+\S+\s+(\d+(\.\d+)?)", block)
-        if m: results["osnr"] = m.group(1) + " dB"
-
-        m = re.search(r"q-factor\s+\S+\s+(\d+(\.\d+)?)", block)
-        if m: results["q_factor"] = m.group(1) + " dB"
-
-        m = re.search(r"fec-ber\s+\S+\s+([0-9.eE-]+)(?!.*15min)", block)
-        if m: results["fec_ber_live"] = m.group(1)
-
-        m = re.search(r"fec-ber-mean\s+\S+\s+([0-9.eE-]+)", block)
-        if m: results["fec_ber_15min"] = m.group(1)
+        fec_15 = re.search(r"fec-ber-mean\s+\S+\s+([0-9.eE-]+)", raw_fec)
+        if fec_15:
+            results["fec_ber_15min"] = fec_15.group(1)
 
         return results
 
