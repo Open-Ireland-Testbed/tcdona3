@@ -90,3 +90,63 @@ class TeraflexSSH:
             "raw_output": block.strip()
         }
 
+
+    @staticmethod
+    def parse_rx_summary(self, logical: str = "ot400") -> Dict[str, Any]:
+        """
+        SSH to the device, pull PM summary for Rx/Tx, Q‑factor, OSNR, SNR, FEC BER,
+        then parse only the 'live' block.
+        """
+        full_if = f"{self.line_port}/{logical}"
+        commands = [
+            f"show interface {self.line_port} opt-phy pm current",    # Tx/Rx power
+            f"show interface {full_if} otsia otsi 1 pm current",      # Q‑factor, OSNR, SNR
+            f"show interface {full_if} otuc4-p pm current"            # FEC BER
+        ]
+
+        # Run each command over SSH, concatenate outputs
+        raw = "\n".join(self._send(cmd) for cmd in commands)
+
+        # Extract only the “live” PM block
+        live_match = re.search(
+            r"mon-entity\s+interval\s+pm-profile.*?opt-phy\s+live.*?(?=\r\n\r\n|\Z)",
+            raw,
+            re.DOTALL
+        )
+        block = live_match.group(0) if live_match else raw
+
+        # Initialize results
+        results = {
+            "rx_power":      None,
+            "tx_power":      None,
+            "snr":           None,
+            "osnr":          None,
+            "q_factor":      None,
+            "fec_ber_live":  None,
+            "fec_ber_15min": None
+        }
+
+        # Parse metrics
+        m = re.search(r"opt-rx-pwr\s+\S+\s+(-?\d+(\.\d+)?)\s*dBm", block)
+        if m: results["rx_power"] = m.group(1) + " dBm"
+
+        m = re.search(r"opt-tx-pwr\s+\S+\s+(-?\d+(\.\d+)?)\s*dBm", block)
+        if m: results["tx_power"] = m.group(1) + " dBm"
+
+        m = re.search(r"signal-to-noise-ratio\s+\S+\s+(\d+(\.\d+)?)", block)
+        if m: results["snr"] = m.group(1) + " dB"
+
+        m = re.search(r"optical-signal-to-noise-ratio\s+\S+\s+(\d+(\.\d+)?)", block)
+        if m: results["osnr"] = m.group(1) + " dB"
+
+        m = re.search(r"q-factor\s+\S+\s+(\d+(\.\d+)?)", block)
+        if m: results["q_factor"] = m.group(1) + " dB"
+
+        m = re.search(r"fec-ber\s+\S+\s+([0-9.eE-]+)(?!.*15min)", block)
+        if m: results["fec_ber_live"] = m.group(1)
+
+        m = re.search(r"fec-ber-mean\s+\S+\s+([0-9.eE-]+)", block)
+        if m: results["fec_ber_15min"] = m.group(1)
+
+        return results
+
