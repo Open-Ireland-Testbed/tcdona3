@@ -92,7 +92,7 @@ class TeraflexSSH:
 
 
     @staticmethod
-    def parse_rx_summary(self, logical: str = "ot400") -> Dict[str, Any]:
+    def return_current_config(self, logical: str = "ot400") -> Dict[str, Any]:
         """
         SSH to the device, pull PM summary for Rx/Tx, Q‑factor, OSNR, SNR, FEC BER,
         then parse only the 'live' block.
