@@ -97,7 +97,9 @@ class TeraflexSSH:
         SSH to the device, pull PM summary for Rx/Tx, Q‑factor, OSNR, SNR, FEC BER,
         then parse only the 'live' block.
         """
+        print("return_current_config() called...")
         full_if = f"{self.line_port}/{logical}"
+        print(f"full_if: {full_if}")
         commands = [
             f"show interface {self.line_port} opt-phy pm current",    # Tx/Rx power
             f"show interface {full_if} otsia otsi 1 pm current",      # Q‑factor, OSNR, SNR
@@ -106,7 +108,9 @@ class TeraflexSSH:
 
         # Run each command over SSH, concatenate outputs
         raw = "\n".join(self._send(cmd) for cmd in commands)
-
+        
+        print(f"raw return: {raw}")
+        
         # Extract only the “live” PM block
         live_match = re.search(
             r"mon-entity\s+interval\s+pm-profile.*?opt-phy\s+live.*?(?=\r\n\r\n|\Z)",
