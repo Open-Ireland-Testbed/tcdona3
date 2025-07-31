@@ -24,19 +24,6 @@ class ILA:
         :raises ValueError: If the device name is invalid.
         """
 
-        parser = ArgumentParser(description='Usage:')
-
-        # script arguments
-        parser.add_argument('-a', '--host', type=str, required=True,
-                            help="Device IP address or Hostname")
-        parser.add_argument('-u', '--username', type=str, required=True,
-                            help="Device Username (netconf agent username)")
-        parser.add_argument('-p', '--password', type=str, required=True,
-                            help="Device Password (netconf agent password)")
-        parser.add_argument('--port', type=int, default=830,
-                            help="Netconf agent port")
-        args = parser.parse_args()
-
         if device == "ila_1":
             host = "10.10.10.34"
         elif device == "ila_2":
@@ -145,40 +132,18 @@ class ILA:
         ''',
         ]
         xml_responses = []
-
-        with manager.connect(
-            host   = args.host,
-            port   = args.port,
-            username = args.username,
-            password = args.password,
-            timeout = 90,
-            hostkey_verify = False,
-            device_params = {'name': 'csr'}
-        ) as m:
-            for rpc_str in payload:
-                try:
-                    # dispatch the RPC
-                    rpc_elem = et.fromstring(rpc_str)
-                    response = m.dispatch(rpc_elem)
-                    data = response.xml
-
-                    # if data is an Element, serialize it
-                    if isinstance(data, et._Element):
-                        pretty = et.tostring(data, pretty_print=True).decode()
-                    else:
-                        # sometimes .xml is already a string
-                        pretty = et.tostring(
-                            et.fromstring(data.encode('utf-8')),
-                            pretty_print=True
-                        ).decode()
-
-                    xml_responses.append(pretty)
-
-                except Exception as e:
-                    # you might want to log or re-raise instead
-                    traceback.print_exc()
-                    raise
-
+        for rpc_str in payload:
+            try:
+                rpc_elem = et.fromstring(rpc_str)
+                resp = self.m.dispatch(rpc_elem)
+                # always pretty-print the returned XML
+                root = et.fromstring(resp.xml.encode())
+                xml_responses.append(
+                    et.tostring(root, pretty_print=True).decode()
+                )
+            except Exception:
+                traceback.print_exc()
+                raise
         return xml_responses
 
     def get_target_gain(self, amp):
