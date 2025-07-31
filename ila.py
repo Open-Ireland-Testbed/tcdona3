@@ -70,116 +70,116 @@ class ILA:
             host=host, port=830, username=user, password=password, hostkey_verify=False
         )
 
-def get_pm_xml(self):
-    """
-    Run each RPC in `payload`, prettify its XML, and return
-    a list of the resulting XML strings.
-    :param payload: List[str] of XML RPC payloads
-    :return: List[str] of pretty-printed XML replies
-    """
+    def get_pm_xml(self):
+        """
+        Run each RPC in `payload`, prettify its XML, and return
+        a list of the resulting XML strings.
+        :param payload: List[str] of XML RPC payloads
+        :return: List[str] of pretty-printed XML replies
+        """
 
-    print("[ILA] get_pm_xml() called...")
+        print("[ILA] get_pm_xml() called...")
 
-    payload = [
-    '''
-    <get xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-    <filter>
-        <open-optical-device xmlns="http://org/openroadm/device">
-        <optical-amplifier>
-            <amplifiers>
-            <amplifier>
-                <name/>
-                <config>
-                <name/>
-                <type/>
-                <target-gain/>
-                <target-gain-tilt/>
-                <gain-range/>
-                <amp-mode/>
-                <target-output-power/>
-                <enabled/>
-                <autolos/>
-                <apr-enabled/>
-                <apr-power/>
-                <plim-enabled/>
-                <plim-power/>
-                </config>
-                <state>
-                <name/>
-                <type/>
-                <target-gain/>
-                <target-gain-tilt/>
-                <gain-range/>
-                <amp-mode/>
-                <target-output-power/>
-                <enabled/>
-                <autolos/>
-                <apr-enabled/>
-                <apr-power/>
-                <plim-enabled/>
-                <plim-power/>
-                <operational-state/>
-                <pump-temperature/>
-                <pump1-temperature/>
-                <actual-gain/>
-                <actual-gain-tilt/>
-                <input-power-total/>
-                <input-power-c-band/>
-                <input-power-l-band/>
-                <msa-input-power-c-band/>
-                <output-power-total/>
-                <output-power-c-band/>
-                <output-power-l-band/>
-                <msa-output-power-c-band/>
-                <laser-bias-current/>
-                <laser-bias1-current/>
-                <back-reflection-ratio/>
-                <back-reflection/>
-                </state>
-            </amplifier>
-            </amplifiers>
-        </optical-amplifier>
-        </open-optical-device>
-    </filter>
-    </get>
-    ''',
-    ]
-    xml_responses = []
+        payload = [
+        '''
+        <get xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+        <filter>
+            <open-optical-device xmlns="http://org/openroadm/device">
+            <optical-amplifier>
+                <amplifiers>
+                <amplifier>
+                    <name/>
+                    <config>
+                    <name/>
+                    <type/>
+                    <target-gain/>
+                    <target-gain-tilt/>
+                    <gain-range/>
+                    <amp-mode/>
+                    <target-output-power/>
+                    <enabled/>
+                    <autolos/>
+                    <apr-enabled/>
+                    <apr-power/>
+                    <plim-enabled/>
+                    <plim-power/>
+                    </config>
+                    <state>
+                    <name/>
+                    <type/>
+                    <target-gain/>
+                    <target-gain-tilt/>
+                    <gain-range/>
+                    <amp-mode/>
+                    <target-output-power/>
+                    <enabled/>
+                    <autolos/>
+                    <apr-enabled/>
+                    <apr-power/>
+                    <plim-enabled/>
+                    <plim-power/>
+                    <operational-state/>
+                    <pump-temperature/>
+                    <pump1-temperature/>
+                    <actual-gain/>
+                    <actual-gain-tilt/>
+                    <input-power-total/>
+                    <input-power-c-band/>
+                    <input-power-l-band/>
+                    <msa-input-power-c-band/>
+                    <output-power-total/>
+                    <output-power-c-band/>
+                    <output-power-l-band/>
+                    <msa-output-power-c-band/>
+                    <laser-bias-current/>
+                    <laser-bias1-current/>
+                    <back-reflection-ratio/>
+                    <back-reflection/>
+                    </state>
+                </amplifier>
+                </amplifiers>
+            </optical-amplifier>
+            </open-optical-device>
+        </filter>
+        </get>
+        ''',
+        ]
+        xml_responses = []
 
-    with manager.connect(
-        host   = args.host,
-        port   = args.port,
-        username = args.username,
-        password = args.password,
-        timeout = 90,
-        hostkey_verify = False,
-        device_params = {'name': 'csr'}
-    ) as m:
-        for rpc_str in payload:
-            try:
-                # dispatch the RPC
-                rpc_elem = et.fromstring(rpc_str)
-                response = m.dispatch(rpc_elem)
-                data = response.xml
+        with manager.connect(
+            host   = args.host,
+            port   = args.port,
+            username = args.username,
+            password = args.password,
+            timeout = 90,
+            hostkey_verify = False,
+            device_params = {'name': 'csr'}
+        ) as m:
+            for rpc_str in payload:
+                try:
+                    # dispatch the RPC
+                    rpc_elem = et.fromstring(rpc_str)
+                    response = m.dispatch(rpc_elem)
+                    data = response.xml
 
-                # if data is an Element, serialize it
-                if isinstance(data, et._Element):
-                    pretty = et.tostring(data, pretty_print=True).decode()
-                else:
-                    # sometimes .xml is already a string
-                    pretty = et.tostring(
-                        et.fromstring(data.encode('utf-8')),
-                        pretty_print=True
-                    ).decode()
+                    # if data is an Element, serialize it
+                    if isinstance(data, et._Element):
+                        pretty = et.tostring(data, pretty_print=True).decode()
+                    else:
+                        # sometimes .xml is already a string
+                        pretty = et.tostring(
+                            et.fromstring(data.encode('utf-8')),
+                            pretty_print=True
+                        ).decode()
 
-                xml_responses.append(pretty)
+                    xml_responses.append(pretty)
 
-            except Exception as e:
-                # you might want to log or re-raise instead
-                traceback.print_exc()
-                raise
+                except Exception as e:
+                    # you might want to log or re-raise instead
+                    traceback.print_exc()
+                    raise
 
-    return xml_responses
+        return xml_responses
 
     def get_target_gain(self, amp):
         """Get the target gain of the amplifier.
