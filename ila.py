@@ -9,71 +9,6 @@ from ncclient.operations import RPCError
 user = "fslyne"
 password = "password"
 
-payload = [
-'''
-<get xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-  <filter>
-    <open-optical-device xmlns="http://org/openroadm/device">
-      <optical-amplifier>
-        <amplifiers>
-          <amplifier>
-            <name/>
-            <config>
-              <name/>
-              <type/>
-              <target-gain/>
-              <target-gain-tilt/>
-              <gain-range/>
-              <amp-mode/>
-              <target-output-power/>
-              <enabled/>
-              <autolos/>
-              <apr-enabled/>
-              <apr-power/>
-              <plim-enabled/>
-              <plim-power/>
-            </config>
-            <state>
-              <name/>
-              <type/>
-              <target-gain/>
-              <target-gain-tilt/>
-              <gain-range/>
-              <amp-mode/>
-              <target-output-power/>
-              <enabled/>
-              <autolos/>
-              <apr-enabled/>
-              <apr-power/>
-              <plim-enabled/>
-              <plim-power/>
-              <operational-state/>
-              <pump-temperature/>
-              <pump1-temperature/>
-              <actual-gain/>
-              <actual-gain-tilt/>
-              <input-power-total/>
-              <input-power-c-band/>
-              <input-power-l-band/>
-              <msa-input-power-c-band/>
-              <output-power-total/>
-              <output-power-c-band/>
-              <output-power-l-band/>
-              <msa-output-power-c-band/>
-              <laser-bias-current/>
-              <laser-bias1-current/>
-              <back-reflection-ratio/>
-              <back-reflection/>
-            </state>
-          </amplifier>
-        </amplifiers>
-      </optical-amplifier>
-    </open-optical-device>
-  </filter>
-</get>
-''',
-]
-
 
 class ILA:
 
@@ -135,13 +70,80 @@ class ILA:
             host=host, port=830, username=user, password=password, hostkey_verify=False
         )
 
-def get_pm_xml(self, payload):
+def get_pm_xml(self):
     """
     Run each RPC in `payload`, prettify its XML, and return
     a list of the resulting XML strings.
     :param payload: List[str] of XML RPC payloads
     :return: List[str] of pretty-printed XML replies
     """
+
+    print("[ILA] get_pm_xml() called...")
+
+    payload = [
+    '''
+    <get xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+    <filter>
+        <open-optical-device xmlns="http://org/openroadm/device">
+        <optical-amplifier>
+            <amplifiers>
+            <amplifier>
+                <name/>
+                <config>
+                <name/>
+                <type/>
+                <target-gain/>
+                <target-gain-tilt/>
+                <gain-range/>
+                <amp-mode/>
+                <target-output-power/>
+                <enabled/>
+                <autolos/>
+                <apr-enabled/>
+                <apr-power/>
+                <plim-enabled/>
+                <plim-power/>
+                </config>
+                <state>
+                <name/>
+                <type/>
+                <target-gain/>
+                <target-gain-tilt/>
+                <gain-range/>
+                <amp-mode/>
+                <target-output-power/>
+                <enabled/>
+                <autolos/>
+                <apr-enabled/>
+                <apr-power/>
+                <plim-enabled/>
+                <plim-power/>
+                <operational-state/>
+                <pump-temperature/>
+                <pump1-temperature/>
+                <actual-gain/>
+                <actual-gain-tilt/>
+                <input-power-total/>
+                <input-power-c-band/>
+                <input-power-l-band/>
+                <msa-input-power-c-band/>
+                <output-power-total/>
+                <output-power-c-band/>
+                <output-power-l-band/>
+                <msa-output-power-c-band/>
+                <laser-bias-current/>
+                <laser-bias1-current/>
+                <back-reflection-ratio/>
+                <back-reflection/>
+                </state>
+            </amplifier>
+            </amplifiers>
+        </optical-amplifier>
+        </open-optical-device>
+    </filter>
+    </get>
+    ''',
+    ]
     xml_responses = []
 
     with manager.connect(
