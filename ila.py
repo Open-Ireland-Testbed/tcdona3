@@ -1,9 +1,78 @@
 from ncclient import manager
 import xmltodict
 from .utils import *
+import traceback
+import lxml.etree as et
+from argparse import ArgumentParser
+from ncclient.operations import RPCError
 
 user = "fslyne"
 password = "password"
+
+payload = [
+'''
+<get xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
+  <filter>
+    <open-optical-device xmlns="http://org/openroadm/device">
+      <optical-amplifier>
+        <amplifiers>
+          <amplifier>
+            <name/>
+            <config>
+              <name/>
+              <type/>
+              <target-gain/>
+              <target-gain-tilt/>
+              <gain-range/>
+              <amp-mode/>
+              <target-output-power/>
+              <enabled/>
+              <autolos/>
+              <apr-enabled/>
+              <apr-power/>
+              <plim-enabled/>
+              <plim-power/>
+            </config>
+            <state>
+              <name/>
+              <type/>
+              <target-gain/>
+              <target-gain-tilt/>
+              <gain-range/>
+              <amp-mode/>
+              <target-output-power/>
+              <enabled/>
+              <autolos/>
+              <apr-enabled/>
+              <apr-power/>
+              <plim-enabled/>
+              <plim-power/>
+              <operational-state/>
+              <pump-temperature/>
+              <pump1-temperature/>
+              <actual-gain/>
+              <actual-gain-tilt/>
+              <input-power-total/>
+              <input-power-c-band/>
+              <input-power-l-band/>
+              <msa-input-power-c-band/>
+              <output-power-total/>
+              <output-power-c-band/>
+              <output-power-l-band/>
+              <msa-output-power-c-band/>
+              <laser-bias-current/>
+              <laser-bias1-current/>
+              <back-reflection-ratio/>
+              <back-reflection/>
+            </state>
+          </amplifier>
+        </amplifiers>
+      </optical-amplifier>
+    </open-optical-device>
+  </filter>
+</get>
+''',
+]
 
 
 class ILA:
@@ -19,6 +88,19 @@ class ILA:
 
         :raises ValueError: If the device name is invalid.
         """
+
+        parser = ArgumentParser(description='Usage:')
+
+        # script arguments
+        parser.add_argument('-a', '--host', type=str, required=True,
+                            help="Device IP address or Hostname")
+        parser.add_argument('-u', '--username', type=str, required=True,
+                            help="Device Username (netconf agent username)")
+        parser.add_argument('-p', '--password', type=str, required=True,
+                            help="Device Password (netconf agent password)")
+        parser.add_argument('--port', type=int, default=830,
+                            help="Netconf agent port")
+        args = parser.parse_args()
 
         if device == "ila_1":
             host = "10.10.10.34"
@@ -48,19 +130,54 @@ class ILA:
 
         if not check_patch_owners([(f"{device}_fwd", f"{device}_bck")]):
             raise Exception("You are not authorized to use this device")
+        print("ILA Initialised...")
         self.m = manager.connect(
             host=host, port=830, username=user, password=password, hostkey_verify=False
         )
 
-    def get_pm_xml(self):
-        """Get the performance monitoring XML file from the device. The XML file dumps the current state, configuration, and performance metrics of the ILA. Additional data cleaning is required to extract the relevant information.
+def get_pm_xml(self, payload):
+    """
+    Run each RPC in `payload`, prettify its XML, and return
+    a list of the resulting XML strings.
+    :param payload: List[str] of XML RPC payloads
+    :return: List[str] of pretty-printed XML replies
+    """
+    xml_responses = []
 
-        :return: The XML file containing the performance monitoring data.
-        :rtype: str
-        """
+    with manager.connect(
+        host   = args.host,
+        port   = args.port,
+        username = args.username,
+        password = args.password,
+        timeout = 90,
+        hostkey_verify = False,
+        device_params = {'name': 'csr'}
+    ) as m:
+        for rpc_str in payload:
+            try:
+                # dispatch the RPC
+                rpc_elem = et.fromstring(rpc_str)
+                response = m.dispatch(rpc_elem)
+                data = response.xml
 
-        xml_file = self.m.get().data_xml
-        return xml_file
+                # if data is an Element, serialize it
+                if isinstance(data, et._Element):
+                    pretty = et.tostring(data, pretty_print=True).decode()
+                else:
+                    # sometimes .xml is already a string
+                    pretty = et.tostring(
+                        et.fromstring(data.encode('utf-8')),
+                        pretty_print=True
+                    ).decode()
+
+                xml_responses.append(pretty)
+
+            except Exception as e:
+                # you might want to log or re-raise instead
+                traceback.print_exc()
+                raise
+
+    return xml_responses
 
     def get_target_gain(self, amp):
         """Get the target gain of the amplifier.
