@@ -3,6 +3,7 @@ import xmltodict
 from utils import *
 import traceback
 import lxml.etree as et
+from ncclient.xml_ import to_ele
 from argparse import ArgumentParser
 from ncclient.operations import RPCError
 
@@ -46,6 +47,8 @@ class ILA:
             host = "10.10.10.19"
         elif device == "ila_11":
             host = "10.10.10.18"
+        elif device == "dummy_ila_1":
+            host = "10.10.10.241"
 
         else:
             raise ValueError("Invalid device name, please enter ila_1, ila_2 or ila_3")
@@ -67,11 +70,8 @@ class ILA:
 
         print("[ILA] get_pm_xml() called...")
 
-        payload = [
-        '''
-        <get xmlns="urn:ietf:params:xml:ns:netconf:base:1.0">
-        <filter>
-            <open-optical-device xmlns="http://org/openroadm/device">
+        payload = '''
+        <open-optical-device xmlns="http://org/openroadm/device">
             <optical-amplifier>
                 <amplifiers>
                 <amplifier>
@@ -126,24 +126,19 @@ class ILA:
                 </amplifier>
                 </amplifiers>
             </optical-amplifier>
-            </open-optical-device>
-        </filter>
-        </get>
-        ''',
-        ]
+        </open-optical-device>
+        '''
         xml_responses = []
-        for rpc_str in payload:
-            try:
-                rpc_elem = et.fromstring(rpc_str)
-                resp = self.m.dispatch(rpc_elem)
-                # always pretty-print the returned XML
-                root = et.fromstring(resp.xml.encode())
-                xml_responses.append(
-                    et.tostring(root, pretty_print=True).decode()
-                )
-            except Exception:
-                traceback.print_exc()
-                raise
+        try:
+            resp = self.m.get(filter=('subtree', to_ele(payload)))
+            # always pretty-print the returned XML
+            root = et.fromstring(resp.xml.encode())
+            xml_responses.append(
+                et.tostring(root, pretty_print=True).decode()
+            )
+        except Exception:
+            traceback.print_exc()
+            raise
         return xml_responses
 
     def get_target_gain(self, amp):
