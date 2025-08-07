@@ -27,15 +27,22 @@ class TeraflexSSH:
         self._connect()
 
     def _connect(self):
-        self.client = paramiko.SSHClient()
-        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.client.connect(self.host, username=self.username,
-                            password=self.password, timeout=self.timeout,
-                            look_for_keys=False, allow_agent=False)
-        self.channel = self.client.invoke_shell()
-        time.sleep(1)
-        if self.channel.recv_ready():
-            self.channel.recv(65535)
+        try:
+            self.client = paramiko.SSHClient()
+            self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.client.connect(self.host, username=self.username,
+                                password=self.password, timeout=self.timeout,
+                                look_for_keys=False, allow_agent=False)
+            self.channel = self.client.invoke_shell()
+            time.sleep(1)
+            if self.channel.recv_ready():
+                self.channel.recv(65535)
+        except paramiko.AuthenticationException as e:
+            raise Exception(f"Authentication failed for {self.host}: {e}")
+        except paramiko.SSHException as e:
+            raise Exception(f"SSH connection failed to {self.host}: {e}")
+        except Exception as e:
+            raise Exception(f"Failed to connect to {self.host}: {e}")
 
     def _send(self, cmd: str) -> str:
         self.channel.send(cmd.strip() + "\n")

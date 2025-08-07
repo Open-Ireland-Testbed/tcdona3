@@ -490,18 +490,8 @@ class Polatis:
             writer = csv.writer(f)
             writer.writerows(data)
 
-    def get_patch_table_list(self, patch_list):
-        """
-        Get the patch table as a list.
-
-        :param patch_list: A list of patches, where each patch is a list of ports.
-        :type patch_list: list
-
-        :raises Exception: If patch_list is not a list or if it is empty.
-
-        :return: The patch table as a list.
-        :rtype: list
-        """
+    def _get_patch_data(self, patch_list):
+        """Internal method to gather patch data."""
         if not isinstance(patch_list, list):
             raise Exception("Argument patch_list must be a list of tuples of patches")
         if len(patch_list) == 0:
@@ -516,6 +506,15 @@ class Polatis:
             data.append([inx, "Out", inp, inpower])
             data.append([outx, "In", outp, outpower])
         return data
+
+    def get_patch_table_csv(self, patch_list, filename):
+        data = self._get_patch_data(patch_list)
+        with open(filename, "w") as f:
+            writer = csv.writer(f)
+            writer.writerows(data)
+
+    def get_patch_table_list(self, patch_list):
+        return self._get_patch_data(patch_list)
 
     def get_NE_type(self):
         line = "RTRV-NETYPE:::123:;"
