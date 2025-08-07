@@ -6,7 +6,7 @@ from ncclient.xml_ import to_ele
 from utils import *
 import pprint
 
-pp = pprint.PrettyPrinter(depth=4)
+pp = pprint.PrettyPrinter(depth=10)
 
 LUMENTUM_USERNAME = "superuser"
 LUMENTUM_PASSWORD = "Sup%9User"
@@ -39,6 +39,8 @@ ip_map = {
     "roadm_9": "10.10.10.16",
     "roadm_10": "10.10.10.15",
     "roadm_11": "10.10.10.14",
+    "roadm_dummy_1": "10.10.10.240",
+    "roadm_dummy_2": "10.10.10.241",
 }
 
 
