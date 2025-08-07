@@ -734,62 +734,58 @@ class Lumentum(object):
         """Get target power for preamp EDFA module (edfa=2)."""
         return self.get_target_power_by_module(2)
 
+    def get_power_by_module_and_direction(self, target_module_id, direction):
+        """
+        Get the specified power (input or output) for an EDFA module using minimal subtree and namespace-agnostic parsing.
+
+        :param target_module_id: int (1 = booster, 2 = preamp)
+        :param direction: str, either 'input-power' or 'output-power'
+        :return: float power value in dBm
+        """
+        assert direction in ("input-power", "output-power")
+
+        filter_xml = f"""
+        <edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa">
+            <edfa>
+                <dn>ne=1;chassis=1;card=1;edfa={target_module_id}</dn>
+                <state>
+                    <{direction}/>
+                </state>
+            </edfa>
+        </edfas>"""
+
+        try:
+            config = self.m.get_config(source="running", filter=("subtree", to_ele(filter_xml)))
+            parsed = xmltodict.parse(config.data_xml)
+
+            def strip_ns(d):
+                return {k.split(":", 1)[-1]: v for k, v in d.items()}
+
+            edfa_state = parsed["data"]["edfas"]["edfa"]["state"]
+            clean_state = strip_ns(edfa_state)
+
+            return float(clean_state.get(direction, 0.0))
+
+        except Exception as e:
+            print(f"Error retrieving {direction} for EDFA module {target_module_id}:", e)
+            return None
 
     def get_mux_edfa_input_power(self):
-        """Get the total input power for the booster EDFA module in the ROADM, recorded at the photodiode (PD) present at the Booster EDFA input. The measurement resolution is 0.01 dB.
-
-        :return: The total input power in dBm.
-        :rtype: float
-        """
-        target_module_id = 1
-        filter = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas>"""
-        edfa_data = self.m.get(filter=('subtree', to_ele(filter)))
-        edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
-        input_power = float(edfa_info_raw[0]["state"]["input-power"])
-        return input_power
+        """Get booster EDFA input power (edfa=1)."""
+        return self.get_power_by_module_and_direction(1, "input-power")
 
     def get_mux_edfa_output_power(self):
-        """Get the total output power for the booster EDFA module in the ROADM, recorded at the photodiode (PD) present at the Booster EDFA output. The measurement resolution is 0.01 dB.
-
-        :return: The total output power in dBm.
-        :rtype: float
-        """
-        target_module_id = 1
-        filter = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas>"""
-        edfa_data = self.m.get(filter=('subtree', to_ele(filter)))
-        edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
-        output_power = float(edfa_info_raw[0]["state"]["output-power"])
-        return output_power
+        """Get booster EDFA output power (edfa=1)."""
+        return self.get_power_by_module_and_direction(1, "output-power")
 
     def get_demux_edfa_input_power(self):
-        """Get the total input power for the preamp EDFA module in the ROADM, recorded at the photodiode (PD) present at the Preamp EDFA input. The measurement resolution is 0.01 dB.
-
-        :return: The total input power in dBm.
-        :rtype: float
-        """
-        target_module_id = 2
-        filter = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas>"""
-        edfa_data = self.m.get(filter=('subtree', to_ele(filter)))
-        edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
-        input_power = float(edfa_info_raw[1]["state"]["input-power"])
-        return input_power
+        """Get preamp EDFA input power (edfa=2)."""
+        return self.get_power_by_module_and_direction(2, "input-power")
 
     def get_demux_edfa_output_power(self):
-        """Get the total output power for the preamp EDFA module in the ROADM, recorded at the photodiode (PD) present at the Preamp EDFA output. The measurement resolution is 0.01 dB.
+        """Get preamp EDFA output power (edfa=2)."""
+        return self.get_power_by_module_and_direction(2, "output-power")
 
-        :return: The total output power in dBm.
-        :rtype: float
-        """
-        target_module_id = 2
-        filter = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas>"""
-        edfa_data = self.m.get(filter=('subtree', to_ele(filter)))
-        edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
-        output_power = float(edfa_info_raw[1]["state"]["output-power"])
-        return output_power
 
     def debug_edfa(self, DEBUG=False):
         """This method dumps all the EDFA information for the booster and preamp EDFA modules in the ROADM in form of a dictionary, which is parsed from XML data. The method is useful for debugging purposes.
