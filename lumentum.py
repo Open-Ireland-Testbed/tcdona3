@@ -3,10 +3,11 @@ import time
 import xmltodict
 from ncclient import manager
 from ncclient.xml_ import to_ele
-from utils import *
+-from utils import *
++from utils import deprecated, check_patch_owners, get_freq_range, log_error  # and any other needed functions
 import pprint
 
-pp = pprint.PrettyPrinter(depth=4)
+pp = pprint.PrettyPrinter(depth=10)
 
 LUMENTUM_USERNAME = "superuser"
 LUMENTUM_PASSWORD = "Sup%9User"
@@ -39,6 +40,11 @@ ip_map = {
     "roadm_9": "10.10.10.16",
     "roadm_10": "10.10.10.15",
     "roadm_11": "10.10.10.14",
+    "roadm_12": "10.10.10.201",
+    "roadm_13": "10.10.10.202",
+    "roadm_14": "10.10.10.203",
+    "roadm_dummy_1": "10.10.10.240",
+    "roadm_dummy_2": "10.10.10.241",
 }
 
 
@@ -111,8 +117,11 @@ class Lumentum(object):
             print(e)
 
     ### EDFA Operations ###
+    @deprecated("Use 'get_edfa_info' instead!")
     def edfa_get_info(self):
         """
+        DEPRECATED: Use `get_edfa_info` instead.
+
         Get the state information of the EDFA modules (booster and preamp), such as target gain/power setting, gain tilt, control mode (such as constant power or constant gain) in the ROADM.
 
         :return: A dictionary containing the state information of the EDFA modules (booster and preamp)
@@ -189,6 +198,51 @@ class Lumentum(object):
                 edfa_info_raw[1]["state"]["voas"]["voa"]["voa-attentuation"]
             )
 
+            return self.edfa_info
+
+        except Exception as e:
+            print("Encountered the following RPC error!")
+            print(e)
+            exit(0)
+
+
+    def get_edfa_info(self):
+        """
+        Get the state information of the EDFA modules (booster and preamp).
+        :return: dict
+        """
+        command = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa"
+                      xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"/>"""
+        try:
+            # RPC and raw parse
+            edfa_data = self.m.get(filter=('subtree', to_ele(command)))
+            parsed   = xmltodict.parse(edfa_data.data_xml)
+            raw      = parsed["data"]["edfas"]["edfa"]
+            # Ensure list
+            entries = raw if isinstance(raw, list) else [raw]
+
+            # Helper: strip namespace prefix
+            def strip_ns(d):
+                return {k.split(":",1)[-1]: v for k, v in d.items()}
+
+            # Populate booster and preamp
+            for idx, module in enumerate(("booster", "preamp")):
+                entry = entries[idx]
+                cfg   = strip_ns(entry.get("config", {}))
+                st    = strip_ns(entry.get("state", {}))
+                voa   = strip_ns(st.get("voas", {}).get("voa", {}))
+                self.edfa_info[module] = {
+                    "control_mode":     cfg.get("control-mode"),
+                    "maintenance_state":cfg.get("maintenance-state"),
+                    "target_power":     float(cfg.get("target-power", 0)),
+                    "target_gain":      float(cfg.get("target-gain", 0)),
+                    "target_gain_tilt": float(cfg.get("target-gain-tilt", 0)),
+                    "input_power":      float(st.get("input-power", 0)),
+                    "output_power":     float(st.get("output-power", 0)),
+                    "voa_input_power":  float(voa.get("voa-input-power", 0)),
+                    "voa_output_power": float(voa.get("voa-output-power", 0)),
+                    "voa_attenuation":  float(voa.get("voa-attentuation", 0)),
+                }
             return self.edfa_info
 
         except Exception as e:
@@ -299,7 +353,7 @@ class Lumentum(object):
             target_module_id = 2
         rpc_reply = 0
 
-        target_edfa_info = self.edfa_get_info()[edfa_module]
+        target_edfa_info = self.get_edfa_info()[edfa_module]
         print(target_edfa_info)
 
         command_out_of_service = """<xc:config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -599,159 +653,143 @@ class Lumentum(object):
         )
         rpc_reply = self.m.edit_config(target="running", config=command)
 
-    def get_mux_target_gain(self):
-        """Get the target gain setting for the booster EDFA module in the ROADM. This only applies if the EDFA module is set in 'constant-gain' mode.
 
-        :return: The target gain setting for the booster EDFA module in the ROADM
-        :rtype: float
+    def get_target_gain_by_module(self, target_module_id):
+        """
+        Retrieve the target gain for a specific EDFA module by module ID in a namespace-agnostic way.
+        :param target_module_id: int (typically 1 for booster, 2 for preamp)
+        :return: float target gain value
+        """
+        filter_xml = f"""
+        <edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa">
+            <edfa>
+                <dn>ne=1;chassis=1;card=1;edfa={target_module_id}</dn>
+                <config>
+                    <target-gain></target-gain>
+                </config>
+            </edfa>
+        </edfas>
         """
 
-        target_module_id = 1
-        filter = (
-            """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa">
-                  <edfa><dn>ne=1;chassis=1;card=1;edfa=%s</dn>
-                  <config>
-                  <target-gain></target-gain>
-                  </config>
-                  </edfa>
-                  </edfas>"""
-            % target_module_id
-        )
-        config = self.m.get_config(source="running", filter=("subtree", filter))
-        config_details = xmltodict.parse(config.data_xml)
-        target_gain = config_details["data"]["edfas"]["edfa"]["config"][
-            "lotee:target-gain"
-        ]
-        return target_gain
+        try:
+            config = self.m.get_config(source="running", filter=("subtree", to_ele(filter_xml)))
+            parsed = xmltodict.parse(config.data_xml)
+            # Remove or use: if self.DEBUG: print(parsed)
+            def strip_ns(d):
+                return {k.split(":", 1)[-1]: v for k, v in d.items()}
+
+            edfa_cfg = parsed["data"]["edfas"]["edfa"]["config"]
+            clean_cfg = strip_ns(edfa_cfg)
+
+            return float(clean_cfg.get("target-gain", 0.0))
+
+        except Exception as e:
+            print(f"Error retrieving target gain for EDFA module {target_module_id}:", e)
+            return None
+
+    def get_mux_target_gain(self):
+        """Get target gain for booster EDFA module (edfa=1)."""
+        return self.get_target_gain_by_module(1)
 
     def get_demux_target_gain(self):
-        """Get the target gain setting for the preamp EDFA module in the ROADM. This only applies if the EDFA module is set in 'constant-gain' mode.
+        """Get target gain for preamp EDFA module (edfa=2)."""
+        return self.get_target_gain_by_module(2)
 
-        :return: The target gain setting for the preamp EDFA module in the ROADM
-        :rtype: float
+    def get_target_power_by_module(self, target_module_id):
         """
-        target_module_id = 2
-        filter = (
-            """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa">
-                  <edfa><dn>ne=1;chassis=1;card=1;edfa=%s</dn>
-                  <config>
-                  <target-gain></target-gain>
-                  </config>
-                  </edfa>
-                  </edfas>"""
-            % target_module_id
-        )
-        config = self.m.get_config(source="running", filter=("subtree", filter))
-        config_details = xmltodict.parse(config.data_xml)
-        target_gain = config_details["data"]["edfas"]["edfa"]["config"][
-            "lotee:target-gain"
-        ]
-        return target_gain
-        # edfa_info_raw = xmltodict.parse(edfa_data.data_xml)['data']['edfas']['edfa']
+        Retrieve the target power for a specific EDFA module by module ID in a namespace-agnostic way.
+        :param target_module_id: int (typically 1 for booster, 2 for preamp)
+        :return: float target power value
+        """
+
+        filter_xml = f"""
+        <edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa"
+               xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa">
+            <edfa>
+                <dn>ne=1;chassis=1;card=1;edfa={target_module_id}</dn>
+                <config>
+                    <target-power></target-power>
+                </config>
+            </edfa>
+        </edfas>
+        """
+
+        try:
+            config = self.m.get_config(source="running", filter=("subtree", to_ele(filter_xml)))
+            parsed = xmltodict.parse(config.data_xml)
+
+            def strip_ns(d):
+                return {k.split(":", 1)[-1]: v for k, v in d.items()}
+
+            edfa_cfg = parsed["data"]["edfas"]["edfa"]["config"]
+            clean_cfg = strip_ns(edfa_cfg)
+
+            return float(clean_cfg.get("target-power", 0.0))
+
+        except Exception as e:
+            print(f"Error retrieving target power for EDFA module {target_module_id}:", e)
+            return None
 
     def get_mux_target_power(self):
-        """Get the target power setting for the booster EDFA module in the ROADM. This only applies if the EDFA module is set in 'constant-power' mode.
-
-        :return: The target power setting for the booster EDFA module in the ROADM
-        :rtype: float
-        """
-        target_module_id = 1
-        filter = (
-            """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa">
-                  <edfa><dn>ne=1;chassis=1;card=1;edfa=%s</dn>
-                  <config>
-                  <target-power></target-power>
-                  </config>
-                  </edfa>
-                  </edfas>"""
-            % target_module_id
-        )
-        config = self.m.get_config(source="running", filter=("subtree", filter))
-        config_details = xmltodict.parse(config.data_xml)
-        target_power = config_details["data"]["edfas"]["edfa"]["config"][
-            "lotee:target-power"
-        ]
-        return target_power
+        """Get target power for booster EDFA module (edfa=1)."""
+        return self.get_target_power_by_module(1)
 
     def get_demux_target_power(self):
-        """Get the target power setting for the preamp EDFA module in the ROADM. This only applies if the EDFA module is set in 'constant-power' mode."""
-        target_module_id = 2
-        filter = (
-            """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa">
-                  <edfa><dn>ne=1;chassis=1;card=1;edfa=%s</dn>
-                  <config>
-                  <target-power></target-power>
-                  </config>
-                  </edfa>
-                  </edfas>"""
-            % target_module_id
-        )
-        config = self.m.get_config(source="running", filter=("subtree", filter))
-        config_details = xmltodict.parse(config.data_xml)
-        target_power = config_details["data"]["edfas"]["edfa"]["config"][
-            "lotee:target-power"
-        ]
-        return target_power
+        """Get target power for preamp EDFA module (edfa=2)."""
+        return self.get_target_power_by_module(2)
+
+    def get_power_by_module_and_direction(self, target_module_id, direction):
+        """
+        Get the specified power (input or output) for an EDFA module using minimal subtree and namespace-agnostic parsing.
+
+        :param target_module_id: int (1 = booster, 2 = preamp)
+        :param direction: str, either 'input-power' or 'output-power'
+        :return: float power value in dBm
+        """
+        assert direction in ("input-power", "output-power")
+
+        filter_xml = f"""
+        <edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa">
+            <edfa>
+                <dn>ne=1;chassis=1;card=1;edfa={target_module_id}</dn>
+                <state>
+                    <{direction}/>
+                </state>
+            </edfa>
+        </edfas>"""
+
+        try:
+            config = self.m.get(filter=("subtree", to_ele(filter_xml)))
+            parsed = xmltodict.parse(config.data_xml)
+
+            def strip_ns(d):
+                return {k.split(":", 1)[-1]: v for k, v in d.items()}
+
+            edfa_state = parsed["data"]["edfas"]["edfa"]["state"]
+            clean_state = strip_ns(edfa_state)
+
+            return float(clean_state.get(direction, 0.0))
+
+        except Exception as e:
+            print(f"Error retrieving {direction} for EDFA module {target_module_id}:", e)
+            return None
 
     def get_mux_edfa_input_power(self):
-        """Get the total input power for the booster EDFA module in the ROADM, recorded at the photodiode (PD) present at the Booster EDFA input. The measurement resolution is 0.01 dB.
-
-        :return: The total input power in dBm.
-        :rtype: float
-        """
-        target_module_id = 1
-        filter = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
-        edfa_data = self.m.get(filter)
-        edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
-        input_power = float(edfa_info_raw[0]["state"]["input-power"])
-        return input_power
+        """Get booster EDFA input power (edfa=1)."""
+        return self.get_power_by_module_and_direction(1, "input-power")
 
     def get_mux_edfa_output_power(self):
-        """Get the total output power for the booster EDFA module in the ROADM, recorded at the photodiode (PD) present at the Booster EDFA output. The measurement resolution is 0.01 dB.
-
-        :return: The total output power in dBm.
-        :rtype: float
-        """
-        target_module_id = 1
-        filter = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
-        edfa_data = self.m.get(filter)
-        edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
-        output_power = float(edfa_info_raw[0]["state"]["output-power"])
-        return output_power
+        """Get booster EDFA output power (edfa=1)."""
+        return self.get_power_by_module_and_direction(1, "output-power")
 
     def get_demux_edfa_input_power(self):
-        """Get the total input power for the preamp EDFA module in the ROADM, recorded at the photodiode (PD) present at the Preamp EDFA input. The measurement resolution is 0.01 dB.
-
-        :return: The total input power in dBm.
-        :rtype: float
-        """
-        target_module_id = 2
-        filter = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
-        edfa_data = self.m.get(filter)
-        edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
-        input_power = float(edfa_info_raw[1]["state"]["input-power"])
-        return input_power
+        """Get preamp EDFA input power (edfa=2)."""
+        return self.get_power_by_module_and_direction(2, "input-power")
 
     def get_demux_edfa_output_power(self):
-        """Get the total output power for the preamp EDFA module in the ROADM, recorded at the photodiode (PD) present at the Preamp EDFA output. The measurement resolution is 0.01 dB.
+        """Get preamp EDFA output power (edfa=2)."""
+        return self.get_power_by_module_and_direction(2, "output-power")
 
-        :return: The total output power in dBm.
-        :rtype: float
-        """
-        target_module_id = 2
-        filter = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
-        edfa_data = self.m.get(filter)
-        edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
-        output_power = float(edfa_info_raw[1]["state"]["output-power"])
-        return output_power
 
     def debug_edfa(self, DEBUG=False):
         """This method dumps all the EDFA information for the booster and preamp EDFA modules in the ROADM in form of a dictionary, which is parsed from XML data. The method is useful for debugging purposes.
@@ -774,8 +812,10 @@ class Lumentum(object):
     def __reset_ports_info(self):
         self.port_info = {}
 
+    @deprecated("Use 'port_get_info' instead!")
     def get_ports_info(self):
         """
+        DEPREACTED: Use new 'get_port_info' instead
         Get the optical line port information for the ROADM. The method returns a dictionary containing the following information for each port:
         - entity-description: The description of the port
         - operational-state: The operational state of the port
@@ -850,6 +890,68 @@ class Lumentum(object):
 
         return self.port_info
 
+    def ports_get_info(self):
+        """
+        Get the optical line port information for the ROADM.
+        :return: dict of port info keyed by port ID
+        """
+        command = """
+        <physical-ports xmlns="http://www.lumentum.com/lumentum-ote-port"
+                        xmlns:lotep="http://www.lumentum.com/lumentum-ote-port"/>
+        """
+        # clear previous cache
+        self.__reset_ports_info()
+
+        try:
+            # RPC and raw parse
+            rpc_reply = self.m.get(filter=('subtree', to_ele(command)))
+            parsed    = xmltodict.parse(rpc_reply.data_xml)
+            raw       = parsed["data"]["physical-ports"]["physical-port"]
+            entries   = raw if isinstance(raw, list) else [raw]
+
+            # Helpers: strip namespace prefixes, and extract text from xmltodict nodes
+            def strip_ns(d):
+                return {k.split(":", 1)[-1]: v for k, v in d.items()}
+
+            def get_text(node, default=None):
+                if isinstance(node, dict):
+                    return node.get("#text", default)
+                return node if node not in (None, "") else default
+
+            for entry in entries:
+                dn       = entry.get("dn", "")
+                port_id  = int(dn.split("port=", 1)[1])
+                state_ns = entry.get("state", {})
+                state    = strip_ns(state_ns)
+
+                # base info always present
+                info = {
+                    "entity-description": get_text(state.get("entity-description")),
+                    "operational-state":  get_text(state.get("operational-state"))
+                }
+
+                # optical line port: input, output, and VOA attenuation
+                if port_id == 3001:
+                    info.update({
+                        "input-power":               float(get_text(state.get("input-power"), 0)),
+                        "output-power":              float(get_text(state.get("output-power"), 0)),
+                        "outvoa-actual-attenuation": float(get_text(state.get("outvoa-actual-attenuation"), 0)),
+                    })
+                # MUX ports (4101–4120): only input power
+                elif 4101 <= port_id <= 4120:
+                    info["input-power"] = float(get_text(state.get("input-power"), 0))
+                # DEMUX ports (5201–5220): only output power
+                elif 5201 <= port_id <= 5220:
+                    info["output-power"] = float(get_text(state.get("output-power"), 0))
+
+                self.port_info[str(port_id)] = info
+
+            return self.port_info
+
+        except Exception as e:
+            print(f"get_ports_info RPC error: {e}")
+            exit(1)
+
     ### WSS Operations ###
     class WSSConnection(object):
         def __init__(
@@ -916,6 +1018,18 @@ class Lumentum(object):
             self.end_freq = end_freq
             self.attenuation = attenuation
             self.name = name
+         
+        def __repr__(self):
+            return (
+                f"{self.__class__.__name__}("
+                f"wss_id={self.wss_id!r}, connection_id={self.connection_id!r}, "
+                f"operation={self.operation!r}, blocked={self.blocked!r}, "
+                f"input_port={self.input_port!r}, output_port={self.output_port!r}, "
+                f"start_freq={self.start_freq!r}, end_freq={self.end_freq!r}, "
+                f"attenuation={self.attenuation!r}, name={self.name!r})"
+            )
+
+        __str__ = __repr__
 
     # TODO: adapte this classmethod for better dict parsing
     class WSSConnectionStatus(WSSConnection):
@@ -1005,11 +1119,11 @@ class Lumentum(object):
         :return: A dictionary containing the WSS connections for the MUX and DEMUX WSS modules in the ROADM
         :rtype: dict
         """
-        command = """<filter>
-                  <connections xmlns="http://www.lumentum.com/lumentum-ote-connection">
-                  </connections></filter>"""
+        command = """
+                  <connections xmlns="http://www.lumentum.com/lumentum-ote-connection"></connections>
+                  """
         try:
-            wss_data = self.m.get(command)
+            wss_data = self.m.get(filter=('subtree', to_ele(command)))
             # An ordered dict exported from xml
             wss_details = xmltodict.parse(wss_data.data_xml)
             if "module=1" in str(wss_details) or "module=2" in str(wss_details):
@@ -1375,11 +1489,11 @@ class Lumentum(object):
 
     def wss_get_monitored_channels(self):
         command = """
-            <filter><monitored-channels xmlns="http://www.lumentum.com/lumentum-ote-monitored-channel"
-                     xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0"></monitored-channels></filter>
+            <monitored-channels xmlns="http://www.lumentum.com/lumentum-ote-monitored-channel"
+                     xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0"></monitored-channels>
         """
         try:
-            wss_data = self.m.get(command)
+            wss_data = self.m.get(filter=('subtree', to_ele(command)))
             # An ordered dict exported from xml
             wss_details = xmltodict.parse(wss_data.data_xml)
             if "port=3101" in str(wss_details) or "port=6201" in str(wss_details):

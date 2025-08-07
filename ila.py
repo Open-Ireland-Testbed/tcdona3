@@ -1,6 +1,11 @@
 from ncclient import manager
 import xmltodict
 from utils import *
+import traceback
+import lxml.etree as et
+from ncclient.xml_ import to_ele
+from argparse import ArgumentParser
+from ncclient.operations import RPCError
 
 user = "fslyne"
 password = "password"
@@ -26,25 +31,115 @@ class ILA:
             host = "10.10.10.27"
         elif device == "ila_3":
             host = "10.10.10.26"
+        elif device == "ila_4":
+            host = "10.10.10.25"
+        elif device == "ila_5":
+            host = "10.10.10.24"
+        elif device == "ila_6":
+            host = "10.10.10.23"
+        elif device == "ila_7":
+            host = "10.10.10.22"
+        elif device == "ila_8":
+            host = "10.10.10.21"
+        elif device == "ila_9":
+            host = "10.10.10.20"
+        elif device == "ila_10":
+            host = "10.10.10.19"
+        elif device == "ila_11":
+            host = "10.10.10.18"
+        elif device == "dummy_ila_1":
+            host = "10.10.10.241"
 
         else:
             raise ValueError("Invalid device name, please enter ila_1, ila_2 or ila_3")
 
         if not check_patch_owners([(f"{device}_fwd", f"{device}_bck")]):
             raise Exception("You are not authorized to use this device")
+        print("ILA Initialised...")
         self.m = manager.connect(
             host=host, port=830, username=user, password=password, hostkey_verify=False
         )
 
     def get_pm_xml(self):
-        """Get the performance monitoring XML file from the device. The XML file dumps the current state, configuration, and performance metrics of the ILA. Additional data cleaning is required to extract the relevant information.
-
-        :return: The XML file containing the performance monitoring data.
-        :rtype: str
+        """
+        Run each RPC in `payload`, prettify its XML, and return
+        a list of the resulting XML strings.
+        :param payload: List[str] of XML RPC payloads
+        :return: List[str] of pretty-printed XML replies
         """
 
-        xml_file = self.m.get().data_xml
-        return xml_file
+        print("[ILA] get_pm_xml() called...")
+
+        payload = '''
+        <open-optical-device xmlns="http://org/openroadm/device">
+            <optical-amplifier>
+                <amplifiers>
+                <amplifier>
+                    <name/>
+                    <config>
+                    <name/>
+                    <type/>
+                    <target-gain/>
+                    <target-gain-tilt/>
+                    <gain-range/>
+                    <amp-mode/>
+                    <target-output-power/>
+                    <enabled/>
+                    <autolos/>
+                    <apr-enabled/>
+                    <apr-power/>
+                    <plim-enabled/>
+                    <plim-power/>
+                    </config>
+                    <state>
+                    <name/>
+                    <type/>
+                    <target-gain/>
+                    <target-gain-tilt/>
+                    <gain-range/>
+                    <amp-mode/>
+                    <target-output-power/>
+                    <enabled/>
+                    <autolos/>
+                    <apr-enabled/>
+                    <apr-power/>
+                    <plim-enabled/>
+                    <plim-power/>
+                    <operational-state/>
+                    <pump-temperature/>
+                    <pump1-temperature/>
+                    <actual-gain/>
+                    <actual-gain-tilt/>
+                    <input-power-total/>
+                    <input-power-c-band/>
+                    <input-power-l-band/>
+                    <msa-input-power-c-band/>
+                    <output-power-total/>
+                    <output-power-c-band/>
+                    <output-power-l-band/>
+                    <msa-output-power-c-band/>
+                    <laser-bias-current/>
+                    <laser-bias1-current/>
+                    <back-reflection-ratio/>
+                    <back-reflection/>
+                    </state>
+                </amplifier>
+                </amplifiers>
+            </optical-amplifier>
+        </open-optical-device>
+        '''
+        xml_responses = []
+        try:
+            resp = self.m.get(filter=('subtree', to_ele(payload)))
+            # always pretty-print the returned XML
+            root = et.fromstring(resp.xml.encode())
+            xml_responses.append(
+                et.tostring(root, pretty_print=True).decode()
+            )
+        except Exception:
+            traceback.print_exc()
+            raise
+        return xml_responses
 
     def get_target_gain(self, amp):
         """Get the target gain of the amplifier.
