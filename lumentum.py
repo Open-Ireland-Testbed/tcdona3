@@ -113,8 +113,11 @@ class Lumentum(object):
             print(e)
 
     ### EDFA Operations ###
+    @deprecated("Use 'get_edfa_info' instead!")
     def edfa_get_info(self):
         """
+        DEPRECATED: Use `get_edfa_info` instead.
+
         Get the state information of the EDFA modules (booster and preamp), such as target gain/power setting, gain tilt, control mode (such as constant power or constant gain) in the ROADM.
 
         :return: A dictionary containing the state information of the EDFA modules (booster and preamp)
@@ -191,6 +194,51 @@ class Lumentum(object):
                 edfa_info_raw[1]["state"]["voas"]["voa"]["voa-attentuation"]
             )
 
+            return self.edfa_info
+
+        except Exception as e:
+            print("Encountered the following RPC error!")
+            print(e)
+            exit(0)
+
+
+    def get_edfa_info(self):
+        """
+        Get the state information of the EDFA modules (booster and preamp).
+        :return: dict
+        """
+        command = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa"
+                      xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"/>"""
+        try:
+            # RPC and raw parse
+            edfa_data = self.m.get(filter=('subtree', to_ele(command)))
+            parsed   = xmltodict.parse(edfa_data.data_xml)
+            raw      = parsed["data"]["edfas"]["edfa"]
+            # Ensure list
+            entries = raw if isinstance(raw, list) else [raw]
+
+            # Helper: strip namespace prefix
+            def strip_ns(d):
+                return {k.split(":",1)[-1]: v for k, v in d.items()}
+
+            # Populate booster and preamp
+            for idx, module in enumerate(("booster", "preamp")):
+                entry = entries[idx]
+                cfg   = strip_ns(entry.get("config", {}))
+                st    = strip_ns(entry.get("state", {}))
+                voa   = strip_ns(st.get("voas", {}).get("voa", {}))
+                self.edfa_info[module] = {
+                    "control_mode":     cfg.get("control-mode"),
+                    "maintenance_state":cfg.get("maintenance-state"),
+                    "target_power":     float(cfg.get("target-power", 0)),
+                    "target_gain":      float(cfg.get("target-gain", 0)),
+                    "target_gain_tilt": float(cfg.get("target-gain-tilt", 0)),
+                    "input_power":      float(st.get("input-power", 0)),
+                    "output_power":     float(st.get("output-power", 0)),
+                    "voa_input_power":  float(voa.get("voa-input-power", 0)),
+                    "voa_output_power": float(voa.get("voa-output-power", 0)),
+                    "voa_attenuation":  float(voa.get("voa-attentuation", 0)),
+                }
             return self.edfa_info
 
         except Exception as e:
@@ -301,7 +349,7 @@ class Lumentum(object):
             target_module_id = 2
         rpc_reply = 0
 
-        target_edfa_info = self.edfa_get_info()[edfa_module]
+        target_edfa_info = self.get_edfa_info()[edfa_module]
         print(target_edfa_info)
 
         command_out_of_service = """<xc:config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
