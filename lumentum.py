@@ -824,8 +824,10 @@ class Lumentum(object):
     def __reset_ports_info(self):
         self.port_info = {}
 
+    @deprecated("Use 'port_get_info' instead!")
     def get_ports_info(self):
         """
+        DEPREACTED: Use new 'get_port_info' instead
         Get the optical line port information for the ROADM. The method returns a dictionary containing the following information for each port:
         - entity-description: The description of the port
         - operational-state: The operational state of the port
@@ -899,6 +901,68 @@ class Lumentum(object):
             exit(1)
 
         return self.port_info
+
+    def ports_get_info(self):
+        """
+        Get the optical line port information for the ROADM.
+        :return: dict of port info keyed by port ID
+        """
+        command = """
+        <physical-ports xmlns="http://www.lumentum.com/lumentum-ote-port"
+                        xmlns:lotep="http://www.lumentum.com/lumentum-ote-port"/>
+        """
+        # clear previous cache
+        self.__reset_ports_info()
+
+        try:
+            # RPC and raw parse
+            rpc_reply = self.m.get(filter=('subtree', to_ele(command)))
+            parsed    = xmltodict.parse(rpc_reply.data_xml)
+            raw       = parsed["data"]["physical-ports"]["physical-port"]
+            entries   = raw if isinstance(raw, list) else [raw]
+
+            # Helpers: strip namespace prefixes, and extract text from xmltodict nodes
+            def strip_ns(d):
+                return {k.split(":", 1)[-1]: v for k, v in d.items()}
+
+            def get_text(node, default=None):
+                if isinstance(node, dict):
+                    return node.get("#text", default)
+                return node if node not in (None, "") else default
+
+            for entry in entries:
+                dn       = entry.get("dn", "")
+                port_id  = int(dn.split("port=", 1)[1])
+                state_ns = entry.get("state", {})
+                state    = strip_ns(state_ns)
+
+                # base info always present
+                info = {
+                    "entity-description": get_text(state.get("entity-description")),
+                    "operational-state":  get_text(state.get("operational-state"))
+                }
+
+                # optical line port: input, output, and VOA attenuation
+                if port_id == 3001:
+                    info.update({
+                        "input-power":               float(get_text(state.get("input-power"), 0)),
+                        "output-power":              float(get_text(state.get("output-power"), 0)),
+                        "outvoa-actual-attenuation": float(get_text(state.get("outvoa-actual-attenuation"), 0)),
+                    })
+                # MUX ports (4101–4120): only input power
+                elif 4101 <= port_id <= 4120:
+                    info["input-power"] = float(get_text(state.get("input-power"), 0))
+                # DEMUX ports (5201–5220): only output power
+                elif 5201 <= port_id <= 5220:
+                    info["output-power"] = float(get_text(state.get("output-power"), 0))
+
+                self.port_info[str(port_id)] = info
+
+            return self.port_info
+
+        except Exception as e:
+            log_error("get_ports_info RPC error: %s", e)
+            exit(1)
 
     ### WSS Operations ###
     class WSSConnection(object):
