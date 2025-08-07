@@ -3,7 +3,8 @@ import time
 import xmltodict
 from ncclient import manager
 from ncclient.xml_ import to_ele
-from utils import *
+-from utils import *
++from utils import deprecated, check_patch_owners, get_freq_range, log_error  # and any other needed functions
 import pprint
 
 pp = pprint.PrettyPrinter(depth=10)
@@ -673,7 +674,7 @@ class Lumentum(object):
         try:
             config = self.m.get_config(source="running", filter=("subtree", to_ele(filter_xml)))
             parsed = xmltodict.parse(config.data_xml)
-            print(parsed)
+            # Remove or use: if self.DEBUG: print(parsed)
             def strip_ns(d):
                 return {k.split(":", 1)[-1]: v for k, v in d.items()}
 
@@ -758,7 +759,7 @@ class Lumentum(object):
         </edfas>"""
 
         try:
-            config = self.m.get_config(source="running", filter=("subtree", to_ele(filter_xml)))
+            config = self.m.get(filter=("subtree", to_ele(filter_xml)))
             parsed = xmltodict.parse(config.data_xml)
 
             def strip_ns(d):
@@ -948,7 +949,7 @@ class Lumentum(object):
             return self.port_info
 
         except Exception as e:
-            log_error("get_ports_info RPC error: %s", e)
+            print(f"get_ports_info RPC error: {e}")
             exit(1)
 
     ### WSS Operations ###
@@ -1122,7 +1123,7 @@ class Lumentum(object):
                   <connections xmlns="http://www.lumentum.com/lumentum-ote-connection"></connections>
                   """
         try:
-            wss_data = self.m.get(filter=('subtree', command))
+            wss_data = self.m.get(filter=('subtree', to_ele(command)))
             # An ordered dict exported from xml
             wss_details = xmltodict.parse(wss_data.data_xml)
             if "module=1" in str(wss_details) or "module=2" in str(wss_details):
