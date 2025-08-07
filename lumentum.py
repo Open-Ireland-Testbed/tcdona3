@@ -918,6 +918,18 @@ class Lumentum(object):
             self.end_freq = end_freq
             self.attenuation = attenuation
             self.name = name
+         
+        def __repr__(self):
+            return (
+                f"{self.__class__.__name__}("
+                f"wss_id={self.wss_id!r}, connection_id={self.connection_id!r}, "
+                f"operation={self.operation!r}, blocked={self.blocked!r}, "
+                f"input_port={self.input_port!r}, output_port={self.output_port!r}, "
+                f"start_freq={self.start_freq!r}, end_freq={self.end_freq!r}, "
+                f"attenuation={self.attenuation!r}, name={self.name!r})"
+            )
+
+        __str__ = __repr__
 
     # TODO: adapte this classmethod for better dict parsing
     class WSSConnectionStatus(WSSConnection):
