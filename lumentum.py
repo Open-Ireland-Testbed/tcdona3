@@ -706,9 +706,9 @@ class Lumentum(object):
         :rtype: float
         """
         target_module_id = 1
-        filter = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
-        edfa_data = self.m.get(filter)
+        filter = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
+                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas>"""
+        edfa_data = self.m.get(filter=('subtree', to_ele(filter)))
         edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
         input_power = float(edfa_info_raw[0]["state"]["input-power"])
         return input_power
@@ -720,9 +720,9 @@ class Lumentum(object):
         :rtype: float
         """
         target_module_id = 1
-        filter = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
-        edfa_data = self.m.get(filter)
+        filter = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
+                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas>"""
+        edfa_data = self.m.get(filter=('subtree', to_ele(filter)))
         edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
         output_power = float(edfa_info_raw[0]["state"]["output-power"])
         return output_power
@@ -734,9 +734,9 @@ class Lumentum(object):
         :rtype: float
         """
         target_module_id = 2
-        filter = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
-        edfa_data = self.m.get(filter)
+        filter = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
+                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas>"""
+        edfa_data = self.m.get(filter=('subtree', to_ele(filter)))
         edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
         input_power = float(edfa_info_raw[1]["state"]["input-power"])
         return input_power
@@ -748,9 +748,9 @@ class Lumentum(object):
         :rtype: float
         """
         target_module_id = 2
-        filter = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
-        edfa_data = self.m.get(filter)
+        filter = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
+                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas>"""
+        edfa_data = self.m.get(filter=('subtree', to_ele(filter)))
         edfa_info_raw = xmltodict.parse(edfa_data.data_xml)["data"]["edfas"]["edfa"]
         output_power = float(edfa_info_raw[1]["state"]["output-power"])
         return output_power
@@ -1007,11 +1007,11 @@ class Lumentum(object):
         :return: A dictionary containing the WSS connections for the MUX and DEMUX WSS modules in the ROADM
         :rtype: dict
         """
-        command = """<filter>
-                  <connections xmlns="http://www.lumentum.com/lumentum-ote-connection">
-                  </connections></filter>"""
+        command = """
+                  <connections xmlns="http://www.lumentum.com/lumentum-ote-connection"></connections>
+                  """
         try:
-            wss_data = self.m.get(command)
+            wss_data = self.m.get(filter=('subtree', command))
             # An ordered dict exported from xml
             wss_details = xmltodict.parse(wss_data.data_xml)
             if "module=1" in str(wss_details) or "module=2" in str(wss_details):
@@ -1377,11 +1377,11 @@ class Lumentum(object):
 
     def wss_get_monitored_channels(self):
         command = """
-            <filter><monitored-channels xmlns="http://www.lumentum.com/lumentum-ote-monitored-channel"
-                     xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0"></monitored-channels></filter>
+            <monitored-channels xmlns="http://www.lumentum.com/lumentum-ote-monitored-channel"
+                     xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0"></monitored-channels>
         """
         try:
-            wss_data = self.m.get(command)
+            wss_data = self.m.get(filter=('subtree', to_ele(command)))
             # An ordered dict exported from xml
             wss_details = xmltodict.parse(wss_data.data_xml)
             if "port=3101" in str(wss_details) or "port=6201" in str(wss_details):
