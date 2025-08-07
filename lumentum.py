@@ -649,57 +649,47 @@ class Lumentum(object):
         )
         rpc_reply = self.m.edit_config(target="running", config=command)
 
-    def get_mux_target_gain(self):
-        """Get the target gain setting for the booster EDFA module in the ROADM. This only applies if the EDFA module is set in 'constant-gain' mode.
 
-        :return: The target gain setting for the booster EDFA module in the ROADM
-        :rtype: float
+    def get_target_gain_by_module(self, target_module_id):
+        """
+        Retrieve the target gain for a specific EDFA module by module ID in a namespace-agnostic way.
+        :param target_module_id: int (typically 1 for booster, 2 for preamp)
+        :return: float target gain value
+        """
+        filter_xml = f"""
+        <edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa">
+            <edfa>
+                <dn>ne=1;chassis=1;card=1;edfa={target_module_id}</dn>
+                <config>
+                    <target-gain></target-gain>
+                </config>
+            </edfa>
+        </edfas>
         """
 
-        target_module_id = 1
-        filter = (
-            """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa">
-                  <edfa><dn>ne=1;chassis=1;card=1;edfa=%s</dn>
-                  <config>
-                  <target-gain></target-gain>
-                  </config>
-                  </edfa>
-                  </edfas>"""
-            % target_module_id
-        )
-        config = self.m.get_config(source="running", filter=("subtree", filter))
-        config_details = xmltodict.parse(config.data_xml)
-        target_gain = config_details["data"]["edfas"]["edfa"]["config"][
-            "lotee:target-gain"
-        ]
-        return target_gain
+        try:
+            config = self.m.get_config(source="running", filter=("subtree", to_ele(filter_xml)))
+            parsed = xmltodict.parse(config.data_xml)
+            print(parsed)
+            def strip_ns(d):
+                return {k.split(":", 1)[-1]: v for k, v in d.items()}
+
+            edfa_cfg = parsed["data"]["edfas"]["edfa"]["config"]
+            clean_cfg = strip_ns(edfa_cfg)
+
+            return float(clean_cfg.get("target-gain", 0.0))
+
+        except Exception as e:
+            print(f"Error retrieving target gain for EDFA module {target_module_id}:", e)
+            return None
+
+    def get_mux_target_gain(self):
+        """Get target gain for booster EDFA module (edfa=1)."""
+        return self.get_target_gain_by_module(1)
 
     def get_demux_target_gain(self):
-        """Get the target gain setting for the preamp EDFA module in the ROADM. This only applies if the EDFA module is set in 'constant-gain' mode.
-
-        :return: The target gain setting for the preamp EDFA module in the ROADM
-        :rtype: float
-        """
-        target_module_id = 2
-        filter = (
-            """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa" 
-                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa">
-                  <edfa><dn>ne=1;chassis=1;card=1;edfa=%s</dn>
-                  <config>
-                  <target-gain></target-gain>
-                  </config>
-                  </edfa>
-                  </edfas>"""
-            % target_module_id
-        )
-        config = self.m.get_config(source="running", filter=("subtree", filter))
-        config_details = xmltodict.parse(config.data_xml)
-        target_gain = config_details["data"]["edfas"]["edfa"]["config"][
-            "lotee:target-gain"
-        ]
-        return target_gain
-        # edfa_info_raw = xmltodict.parse(edfa_data.data_xml)['data']['edfas']['edfa']
+        """Get target gain for preamp EDFA module (edfa=2)."""
+        return self.get_target_gain_by_module(2)
 
     def get_mux_target_power(self):
         """Get the target power setting for the booster EDFA module in the ROADM. This only applies if the EDFA module is set in 'constant-power' mode.
