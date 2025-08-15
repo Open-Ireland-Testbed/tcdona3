@@ -1,6 +1,6 @@
 from ncclient import manager
 import xmltodict
-from utils import *
+from .utils import *
 import traceback
 import lxml.etree as et
 from ncclient.xml_ import to_ele

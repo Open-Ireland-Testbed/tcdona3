@@ -2,7 +2,7 @@ import sys
 import os
 import plotly.express as px
 import plotly.graph_objects as go
-from osa import OSA
+from .osa import OSA
 import dash
 from dash import dcc
 from dash import html

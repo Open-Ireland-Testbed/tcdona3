@@ -2,6 +2,7 @@ import socket
 import os, sys, re
 
 from .Common import Send, Receive
+from ..utils import check_patch_owners
 
 import usb.core
 
@@ -47,8 +48,11 @@ class AP2XXX:
         self.__Simulation = Simulation
         self.__Connected = False
 
+        if check_patch_owners(
+            [('apex_osa', 'apex_osa')]
+        ):
         # Connexion to the equipment
-        self.Open()
+            self.Open()
 
     def Open(self):
         """

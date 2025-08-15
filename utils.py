@@ -1,7 +1,7 @@
 import mysql.connector
 import os
 import math
-#import pkg_resources
+import pkg_resources
 import pandas as pd
 import warnings
 import functools
