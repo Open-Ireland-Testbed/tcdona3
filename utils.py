@@ -43,75 +43,74 @@ def get_freq_range(
 
 
 def check_patch_owners(patch_list):
+    """
+    Check if all devices in the patch list are either unbooked or booked by the current user.
 
-    """Check if the ports in the patch list are available and are allocated to the running user.
-
-    :param patch_list: A list of patches, where each patch is a list of ports.
+    :param patch_list: A list of patches, where each patch is a tuple/list of device names.
     :type patch_list: list
 
-    :return: True if all ports are available and allocated to the running user, False otherwise.
+    :return: True if all devices are unbooked or booked by current user, False otherwise.
     :rtype: bool
     """
-
-    # Get the Unix user behind sudo
-    unix_user = os.getenv("SUDO_USER")
+    unix_user = os.getenv("SUDO_USER") or os.getenv("USER")
     if not unix_user:
-        unix_user = os.getenv("USER")
+        print("No valid user found in environment.")
+        return False
 
-    # Connect to the MySQL database
+    # Flatten patch_list and filter out "NULL"
+    all_devices = {
+        device for patch in patch_list for device in patch if device != "NULL"
+    }
+    if not all_devices:
+        return True
+
     conn = mysql.connector.connect(
-        host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
+        host=os.getenv("DB_HOST", "127.0.0.1"),
+        user=os.getenv("DB_USER", "testbed"),
+        password=os.getenv("DB_PASSWORD", "mypassword"),
+        database=os.getenv("DB_NAME", "provdb")
     )
     cursor = conn.cursor()
 
-    nonexistent_ports = []
-    other_owners = []
+    format_strings = ",".join(["%s"] * len(all_devices))
 
-    for patch in patch_list:
-        for port in patch:
-            # Skip NULL connections
-            if port == "NULL":
-                continue
+    # Query active_bookings with current user
+    cursor.execute(
+        f"""
+        SELECT device_id FROM active_bookings
+        WHERE device_id IN (
+            SELECT id FROM device_table WHERE name IN ({format_strings})
+        ) AND username = %s
+        """,
+        tuple(all_devices) + (unix_user,),
+    )
+    owned_device_ids = {row[0] for row in cursor.fetchall()}
 
-            # Check if the port exists and fetch the owner
-            cursor.execute("SELECT Owner FROM ports_new WHERE Name = %s", (port,))
-            result = cursor.fetchone()
-            if not result:
-                nonexistent_ports.append(port)
-            else:
-                # if len(owner) == 0:
-                #    nonexistent_ports.append(port)
-                owner = result[0]
-                if len(owner) != 0 and unix_user not in owner.split(","):
-                    other_owners.append((port, owner))
-    if (len(nonexistent_ports) > 0) or (len(other_owners) > 0):
-        # Close the cursor and connection
-        cursor.close()
-        conn.close()
+    # Get name to ID mapping (same as earlier)
+    cursor.execute(
+        "SELECT id, name FROM device_table WHERE name IN (%s)" % format_strings,
+        tuple(all_devices),
+    )
+    device_rows = cursor.fetchall()
+    name_to_id = {name: dev_id for dev_id, name in device_rows}
 
-        if nonexistent_ports:
-            print("Nonexistent ports:", nonexistent_ports)
-        if other_owners:
-            print("Ports with other owners:", other_owners)
-        return False
+    missing_devices = list(all_devices - set(name_to_id.keys()))
+    conflict_devices = [
+        name for name, dev_id in name_to_id.items() if dev_id not in owned_device_ids
+    ]
 
-    else:
-        # # If all checks pass, update the owner of the ports to the Unix user
-        # for connection in patch_list:
-        #     for name in connection:
-        #         if name == "NULL":
-        #             continue
-        #         cursor.execute(
-        #             "UPDATE ports SET owner = %s WHERE Name = %s", (unix_user, name)
-        #         )
+    cursor.close()
+    conn.close()
 
-        # # Commit the changes
-        # conn.commit()
+    if missing_devices:
+        print("[CHECK_OWNERS] Missing devices:", missing_devices)
+    if conflict_devices:
+        print(
+            "[CHECK_OWNERS] Devices booked by another user or unbooked:",
+            conflict_devices,
+        )
 
-        # Close the cursor and connection
-        cursor.close()
-        conn.close()
-        return True
+    return not missing_devices and not conflict_devices
 
 
 def db_to_abs(db_value):
