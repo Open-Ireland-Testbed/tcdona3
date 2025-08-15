@@ -6,16 +6,16 @@ import matplotlib.pyplot as plt
 import copy
 from collections import OrderedDict
 import pandas as pd
-from lumentum import (
+from tcdona3.lumentum import (
     Lumentum,
     LUMENTUM_DEFAULT_WSS_LOSS,
     LUMENTUM_CHANNEL_QUANTITY,
     LUMENTUM_WSS_CHANNEL_FREQ_CENTER_LIST,
 )
 import xmltodict
-from polatis import Polatis
-from ila import ILA
-from osa import OSA
+from tcdona3.polatis import Polatis
+from tcdona3.ila import ILA
+from tcdona3.osa import OSA
 
 # matplotlib.use('module://drawilleplot')
 # matplotlib.use('svg')

@@ -3,8 +3,7 @@ import time
 import xmltodict
 from ncclient import manager
 from ncclient.xml_ import to_ele
--from utils import *
-+from utils import deprecated, check_patch_owners, get_freq_range, log_error  # and any other needed functions
+from tcdona3.utils import *
 import pprint
 
 pp = pprint.PrettyPrinter(depth=10)
