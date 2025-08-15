@@ -74,45 +74,63 @@ def check_patch_owners(patch_list):
     )
     cursor = conn.cursor()
 
-    format_strings = ",".join(["%s"] * len(all_devices))
+    placeholders = ",".join(["%s"] * len(all_devices))
 
-    # Query active_bookings with current user
-    cursor.execute(
-        f"""
-        SELECT device_id FROM active_bookings
-        WHERE device_id IN (
-            SELECT id FROM device_table WHERE name IN ({format_strings})
-        ) AND username = %s
-        """,
-        tuple(all_devices) + (unix_user,),
-    )
-    owned_device_ids = {row[0] for row in cursor.fetchall()}
+    # Use a parameterized query
+    query = f"""
+        SELECT device_name, user_name
+        FROM active_bookings
+        WHERE device_name IN ({placeholders})
+        AND user_name IS NOT NULL AND user_name != %s
+    """
+    cursor.execute(query, tuple(all_devices) + (unix_user,))
 
-    # Get name to ID mapping (same as earlier)
-    cursor.execute(
-        "SELECT id, name FROM device_table WHERE name IN (%s)" % format_strings,
-        tuple(all_devices),
-    )
-    device_rows = cursor.fetchall()
-    name_to_id = {name: dev_id for dev_id, name in device_rows}
+    conflicting_devices = cursor.fetchall()
 
-    missing_devices = list(all_devices - set(name_to_id.keys()))
-    conflict_devices = [
-        name for name, dev_id in name_to_id.items() if dev_id not in owned_device_ids
-    ]
+    if conflicting_devices:
+        for device_name, user_name in conflicting_devices:
+            print(f"Device {device_name} is owned by user '{user_name}'")
+        return False
+    
+    return True
 
-    cursor.close()
-    conn.close()
+    # Query active_bookings with current user or unallocated devices
+    # cursor.execute(
+    #     f"""
+    #     SELECT device_id FROM active_bookings
+    #     WHERE device_id IN (
+    #         SELECT id FROM device_table WHERE deviceName IN ({format_strings})
+    #     ) AND (user_id = %s OR user_id IS NULL)
+    #     """,
+    #     tuple(all_devices) + (user_id,),
+    # )
+    # owned_or_unallocated_device_ids = {row[0] for row in cursor.fetchall()}
 
-    if missing_devices:
-        print("[CHECK_OWNERS] Missing devices:", missing_devices)
-    if conflict_devices:
-        print(
-            "[CHECK_OWNERS] Devices booked by another user or unbooked:",
-            conflict_devices,
-        )
+    # # Get name to ID mapping (same as earlier)
+    # cursor.execute(
+    #     "SELECT id, deviceName FROM device_table WHERE deviceName IN (%s)" % format_strings,
+    #     tuple(all_devices),
+    # )
+    # device_rows = cursor.fetchall()
+    # name_to_id = {name: dev_id for dev_id, name in device_rows}
 
-    return not missing_devices and not conflict_devices
+    # missing_devices = list(all_devices - set(name_to_id.keys()))
+    # conflict_devices = [
+    #     name for name, dev_id in name_to_id.items() if dev_id not in owned_or_unallocated_device_ids
+    # ]
+
+    # cursor.close()
+    # conn.close()
+
+    # if missing_devices:
+    #     print("[CHECK_OWNERS] Unallocated devices:", missing_devices)
+    # if conflict_devices:
+    #     print(
+    #         "[CHECK_OWNERS] Devices booked by another user or blocked:",
+    #         conflict_devices,
+    #     )
+
+    # return not conflict_devices
 
 
 def db_to_abs(db_value):
