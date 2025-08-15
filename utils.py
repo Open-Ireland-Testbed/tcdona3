@@ -1,8 +1,10 @@
 import mysql.connector
 import os
 import math
-import pkg_resources
+#import pkg_resources
 import pandas as pd
+import warnings
+import functools
 
 FIRST_CENTRAL_FREQ = 191350.0
 CHANNEL_SPACING = 50.0
@@ -158,3 +160,16 @@ def load_csv_with_pandas(filename):
     df = pd.read_csv(csv_path)
 
     return df
+
+
+def deprecated(reason: str = ""):
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            msg = f"Function {func.__name__} is deprecated."
+            if reason:
+                msg += f" Reason: {reason}"
+            warnings.warn(msg, category=DeprecationWarning, stacklevel=2)
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator

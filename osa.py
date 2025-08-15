@@ -1,6 +1,6 @@
 import pyvisa
 import matplotlib.pyplot as plt
-from .utils import check_patch_owners
+from utils import check_patch_owners
 
 
 class OSA:
