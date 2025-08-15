@@ -5,7 +5,7 @@ from paramiko import *
 import re
 import sys
 import time
-from .utils import *
+from tcdona3.utils import *
 
 
 class Cassini:

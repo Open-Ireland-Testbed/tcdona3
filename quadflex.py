@@ -3,7 +3,7 @@ from ncclient.xml_ import *
 import xmltodict
 import logging
 import time
-from .utils import check_patch_owners
+from tcdona3.utils import check_patch_owners
 
 
 class QFlex:

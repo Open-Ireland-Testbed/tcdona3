@@ -4,7 +4,7 @@ import xmltodict
 import logging
 import time
 import sys
-from .utils import check_patch_owners
+from tcdona3.utils import check_patch_owners
 from lxml import etree
 
 
