@@ -19,6 +19,19 @@ release = "1.0.0"
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
+autodoc_mock_imports = [
+    "bluepy", "pyvisa", "paramiko", "ncclient", "mysql", "mysql.connector",
+    "xmltodict", "prettytable", "pyserial", "numpy", "pandas", "matplotlib",
+]
+
+autosummary_generate = True
+autodoc_default_options = {
+    "members": True,
+    "undoc-members": True,
+    "inherited-members": True,
+    "show-inheritance": True,
+}
+
 extensions = [
     "sphinx.ext.duration",
     "sphinx.ext.doctest",
