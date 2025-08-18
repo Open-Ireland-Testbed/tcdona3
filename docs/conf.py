@@ -26,7 +26,7 @@ release = "1.0.0"
 
 autodoc_mock_imports = [
     "bluepy", "pyvisa", "paramiko", "ncclient", "mysql", "mysql.connector",
-    "xmltodict", "prettytable", "pyserial", "numpy", "pandas", "matplotlib",
+    "xmltodict", "prettytable", "pyserial", "numpy", "pandas", "matplotlib",'serial','lxml','json_parser'
 ]
 
 autosummary_generate = True
