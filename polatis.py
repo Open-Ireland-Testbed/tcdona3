@@ -95,7 +95,7 @@ class Polatis:
         """
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="10.10.10.4", user="testbed", password="mypassword", database="provdb"
+            host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
         )
         cursor = conn.cursor()
         cursor.execute("SELECT `Out_Port` FROM ports_new WHERE Name = %s", (inx,))
@@ -114,7 +114,7 @@ class Polatis:
         """
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="10.10.10.4", user="testbed", password="mypassword", database="provdb"
+            host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
         )
         cursor = conn.cursor()
         cursor.execute("SELECT `In_Port` FROM ports_new WHERE Name = %s", (outx,))
@@ -185,7 +185,7 @@ class Polatis:
 
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="10.10.10.4", user="testbed", password="mypassword", database="provdb"
+            host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
         )
         cursor = conn.cursor()
 
@@ -293,7 +293,7 @@ class Polatis:
 
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="10.10.10.4", user="testbed", password="mypassword", database="provdb"
+            host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
         )
         cursor = conn.cursor()
 
@@ -339,7 +339,7 @@ class Polatis:
 
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="10.10.10.4", user=admin_user, password=password, database="provdb"
+            host="127.0.0.1", user=admin_user, password=password, database="provdb"
         )
         cursor = conn.cursor()
 

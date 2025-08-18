@@ -1,13 +1,2 @@
+sphinx
 sphinx-rtd-theme
-bluepy
-pandas
-mysql-connector-python
-ncclient
-xmltodict
-pyvisa
-matplotlib
-paramiko
-numpy
-matplotlib
-prettytable
-pyserial

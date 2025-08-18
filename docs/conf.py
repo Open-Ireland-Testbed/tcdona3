@@ -6,10 +6,15 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath("../"))
+# --- RTD import shim for 'tcdona3' (no package install required) ---
+import os, sys, types, pathlib
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+if "tcdona3" not in sys.modules:
+    tcdona3_pkg = types.ModuleType("tcdona3")
+    tcdona3_pkg.__path__ = [str(PROJECT_ROOT)]
+    sys.modules["tcdona3"] = tcdona3_pkg
+# -------------------------------------------------------------------
 
 project = "tcdona3"
 copyright = "2024, Agastya Raj"
@@ -18,6 +23,19 @@ release = "1.0.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+
+autodoc_mock_imports = [
+    "bluepy", "pyvisa", "paramiko", "ncclient", "mysql", "mysql.connector",
+    "xmltodict", "prettytable", "pyserial", "numpy", "pandas", "matplotlib",'serial','lxml','json_parser'
+]
+
+autosummary_generate = True
+autodoc_default_options = {
+    "members": True,
+    "undoc-members": True,
+    "inherited-members": True,
+    "show-inheritance": True,
+}
 
 extensions = [
     "sphinx.ext.duration",
