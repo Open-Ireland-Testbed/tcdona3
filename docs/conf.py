@@ -6,10 +6,15 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath("../"))
+# --- RTD import shim for 'tcdona3' (no package install required) ---
+import os, sys, types, pathlib
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+if "tcdona3" not in sys.modules:
+    tcdona3_pkg = types.ModuleType("tcdona3")
+    tcdona3_pkg.__path__ = [str(PROJECT_ROOT)]
+    sys.modules["tcdona3"] = tcdona3_pkg
+# -------------------------------------------------------------------
 
 project = "tcdona3"
 copyright = "2024, Agastya Raj"
