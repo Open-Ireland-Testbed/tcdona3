@@ -98,7 +98,7 @@ class Polatis:
             host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
         )
         cursor = conn.cursor()
-        cursor.execute("SELECT `Out_Port` FROM ports_new WHERE Name = %s", (inx,))
+        cursor.execute("SELECT `Out_Port` FROM device_table WHERE polatis_name = %s", (inx,))
         inp = cursor.fetchone()[0]
         return inp
 
@@ -117,7 +117,7 @@ class Polatis:
             host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
         )
         cursor = conn.cursor()
-        cursor.execute("SELECT `In_Port` FROM ports_new WHERE Name = %s", (outx,))
+        cursor.execute("SELECT `In_Port` FROM device_table WHERE polatis_name = %s", (outx,))
         outp = cursor.fetchone()[0]
         return outp
 
@@ -195,52 +195,52 @@ class Polatis:
 
             # Fetch the 'In' and 'Out' values from the Ports table
             cursor.execute(
-                "SELECT `Out_Port` FROM ports_new WHERE Name = %s", (input_comp,)
+                "SELECT `Out_Port` FROM device_table WHERE polatis_name = %s", (input_comp,)
             )
             inp = cursor.fetchone()[0]
 
             cursor.execute(
-                "SELECT `In_Port` FROM ports_new WHERE Name = %s", (output_comp,)
+                "SELECT `In_Port` FROM device_table WHERE polatis_name = %s", (output_comp,)
             )
             outp = cursor.fetchone()[0]
 
-            cursor.execute(
-                "SELECT `Max_Inpower` FROM ports_new WHERE Name = %s", (input_comp,)
-            )
-            max_inpower = cursor.fetchone()
-            max_inpower = max_inpower[0] if max_inpower else None
+            # cursor.execute(
+            #     "SELECT `Max_Inpower` FROM device_table WHERE polatis_name = %s", (input_comp,)
+            # )
+            # max_inpower = cursor.fetchone()
+            # max_inpower = max_inpower[0] if max_inpower else None
 
+            # inpower = self.get_port_power(int(inp))
+            # if max_inpower:
+            #     max_inpower_val = float(max_inpower)
+            # else:
+            #     max_inpower_val = 20.0
+
+            # if inpower > max_inpower_val:
+            #     message = "%s (%s): %.2f dBm > %s (%s): %.2f dBm" % (
+            #         input_comp,
+            #         inp,
+            #         inpower,
+            #         output_comp,
+            #         outp,
+            #         max_inpower_val,
+            #     )
+            #     # self.logger("Patch max power exceeded: %s" % message)
+            #     raise Exception("Patch max power exceeded: %s" % message)
+            # else:
+            self.__conn(inp, outp)
+            time.sleep(1)
             inpower = self.get_port_power(int(inp))
-            if max_inpower:
-                max_inpower_val = float(max_inpower)
-            else:
-                max_inpower_val = 20.0
-
-            if inpower > max_inpower_val:
-                message = "%s (%s): %.2f dBm > %s (%s): %.2f dBm" % (
-                    input_comp,
-                    inp,
-                    inpower,
-                    output_comp,
-                    outp,
-                    max_inpower_val,
-                )
-                # self.logger("Patch max power exceeded: %s" % message)
-                raise Exception("Patch max power exceeded: %s" % message)
-            else:
-                self.__conn(inp, outp)
-                time.sleep(1)
-                outpower = self.get_port_power(int(outp))
-                data = "%s (%s): %.2f dBm ---> %s (%s): %.2f dBm < %.2f dBm" % (
-                    input_comp,
-                    inp,
-                    inpower,
-                    output_comp,
-                    outp,
-                    outpower,
-                    max_inpower_val,
-                )
-                print(data)
+            outpower = self.get_port_power(int(outp))
+            data = "%s (%s): %.2f dBm ---> %s (%s): %.2f dBm" % (
+                input_comp,
+                inp,
+                inpower,
+                output_comp,
+                outp,
+                outpower,
+            )
+            print(data)
                 # self.logger("Connect %s" % (data))
 
         # Close the cursor and connection
@@ -303,12 +303,12 @@ class Polatis:
 
             # Fetch the 'In' and 'Out' values from the Ports table
             cursor.execute(
-                "SELECT `Out_Port` FROM ports_new WHERE Name = %s", (input_comp,)
+                "SELECT `Out_Port` FROM device_table WHERE polatis_name = %s", (input_comp,)
             )
             inp = cursor.fetchone()[0]
 
             cursor.execute(
-                "SELECT `In_Port` FROM ports_new WHERE Name = %s", (output_comp,)
+                "SELECT `In_Port` FROM device_table WHERE polatis_name = %s", (output_comp,)
             )
             outp = cursor.fetchone()[0]
 
