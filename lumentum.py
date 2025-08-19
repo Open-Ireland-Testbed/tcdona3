@@ -202,7 +202,7 @@ class Lumentum(object):
         except Exception as e:
             print("Encountered the following RPC error!")
             print(e)
-            exit(0)
+            raise RuntimeError(e)
 
 
     def get_edfa_info(self):
@@ -247,7 +247,7 @@ class Lumentum(object):
         except Exception as e:
             print("Encountered the following RPC error!")
             print(e)
-            exit(0)
+            raise RuntimeError(e)
 
     def __edfa_los_mode(self, edfa_module, los_shutdown):
 
@@ -345,7 +345,6 @@ class Lumentum(object):
         # Assert
         if edfa_module != "booster" and edfa_module != "preamp":
             raise Exception("Invalid edfa_module: Please choose 'booster' or 'preamp'.")
-            exit(0)
         elif edfa_module == "booster":
             target_module_id = 1
         elif edfa_module == "preamp":
@@ -984,28 +983,23 @@ class Lumentum(object):
                 raise Exception(
                     "Invalid WSS wss_id is not 1 or 2. Please select WSS 1 (MUX) or WSS 2 (DEMUX)"
                 )
-                exit(0)
             elif wss_id == 1:
                 if input_port < 4101 or input_port > 4120 or output_port != 4201:
                     raise Exception(
                         "Invalid WSS1 input_port range (4101-4120) or output_port range (4201)"
                     )
-                    exit(0)
             elif wss_id == 2:
                 if input_port != 5101 or output_port < 5201 or output_port > 5220:
                     raise Exception(
                         "Invalid WSS1 input_port range (5101) or output_port range (5201-5220)"
                     )
-                    exit(0)
 
             if operation != "in-service" and operation != "out-of-service":
                 raise Exception(
                     "Invalid WSS operation: not 'in-service' or 'out-of-service'"
                 )
-                exit(0)
             if blocked != "true" and blocked != "false":
                 raise Exception("Invalid WSS blocked: not 'true' or 'false'")
-                exit(0)
 
             self.wss_id = wss_id
             self.connection_id = connection_id
@@ -1137,7 +1131,7 @@ class Lumentum(object):
         except Exception as e:
             print("Encountered the following RPC error!")
             print(e)
-            exit(0)
+            raise RuntimeError(e)
 
         # With only MUX connections
         if "module=1" in str(connections) and "module=2" not in str(connections):
@@ -1509,7 +1503,7 @@ class Lumentum(object):
         except Exception as e:
             print("Encountered the following RPC error!")
             print(e)
-            exit(0)
+            raise RuntimeError(e)
 
         mon_mux_id = 0
         mon_demux_id = 0
@@ -1596,13 +1590,10 @@ class Lumentum(object):
         # Assert
         if wss_id == 1 and output_port != 4201:
             raise Exception("Error: WSS 1 (MUX) output port has to be 4201.")
-            exit(0)
         elif wss_id == 2 and input_port != 5101:
             raise Exception("Error: WSS 2 (DEMUX) input port has to be 5101.")
-            exit(0)
         elif wss_id != 1 and wss_id != 2:
             raise Exception("Error: Invalid WSS wss_id (not 1 or 2).")
-            exit(0)
 
         command = """
                   <add-connection xmlns="http://www.lumentum.com/lumentum-ote-connection">
@@ -1650,7 +1641,7 @@ class Lumentum(object):
         except Exception as e:
             print("Encountered the following RPC error!")
             print(e)
-            exit(0)
+            raise RuntimeError(e)
 
     def set_mux_block(self, connection_id):
         self.wss_block(1, 4201, connection_id, "true")
@@ -1684,7 +1675,7 @@ class Lumentum(object):
                 except Exception as e:
                     print("Encountered the following RPC error!")
                     print(e)
-                    exit(0)
+                    raise RuntimeError(e)
 
         else:
             command = """
@@ -1710,7 +1701,7 @@ class Lumentum(object):
             except Exception as e:
                 print("Encountered the following RPC error!")
                 print(e)
-                exit(0)
+                raise RuntimeError(e)
 
     def set_mux_atten(self, connection_id, atten=0.0):
         self.wss_atten(1, 4101, connection_id, atten)
@@ -1832,7 +1823,7 @@ class Lumentum(object):
                 except Exception as e:
                     print("Encountered the following RPC error!")
                     print(e)
-                    exit(0)
+                    raise RuntimeError(e)
 
         else:
             command = """
@@ -1857,7 +1848,7 @@ class Lumentum(object):
             except Exception as e:
                 print("Encountered the following RPC error!")
                 print(e)
-                exit(0)
+                raise RuntimeError(e)
 
     def wss_outport(self, wss_id, connection_id, port):
         if isinstance(connection_id, list):
@@ -1878,7 +1869,7 @@ class Lumentum(object):
                 except Exception as e:
                     print("Encountered the following RPC error!")
                     print(e)
-                    exit(0)
+                    raise RuntimeError(e)
 
         else:
             command = """
@@ -1905,7 +1896,7 @@ class Lumentum(object):
             except Exception as e:
                 print("Encountered the following RPC error!")
                 print(e)
-                exit(0)
+                raise RuntimeError(e)
 
     def wss_add_connections(self, connections):
         """
