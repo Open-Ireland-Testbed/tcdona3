@@ -47,7 +47,8 @@ def get_freq_range(
 def check_patch_owners(patch_list):
     """
     Check if all devices in the patch list are either unbooked or booked by the current user.
-
+    Allows shared bookings (device booked by multiple users including current user).
+    
     :param patch_list: A list of patches, where each patch is a tuple/list of device names.
     :type patch_list: list
 
@@ -74,25 +75,34 @@ def check_patch_owners(patch_list):
     )
     cursor = conn.cursor()
 
-    placeholders = ",".join(["%s"] * len(all_devices))
+    try:
+        placeholders = ",".join(["%s"] * len(all_devices))
 
-    # Use a parameterized query
-    query = f"""
-        SELECT device_name, user_name
-        FROM active_bookings
-        WHERE device_name IN ({placeholders})
-        AND user_name IS NOT NULL AND user_name != %s
-    """
-    cursor.execute(query, tuple(all_devices) + (unix_user,))
+        # Devices returned by this query are TRUE conflicts:
+        # - they have at least one non-null/non-empty booking, AND
+        # - none of those bookings belong to the current user.
+        query = f"""
+            SELECT
+                device_name,
+                GROUP_CONCAT(DISTINCT user_name ORDER BY user_name SEPARATOR ',')
+            FROM active_bookings
+            WHERE device_name IN ({placeholders})
+              AND user_name IS NOT NULL AND user_name <> ''
+            GROUP BY device_name
+            HAVING SUM(user_name = %s) = 0
+        """
+        cursor.execute(query, tuple(all_devices) + (unix_user,))
+        conflicts = cursor.fetchall()
 
-    conflicting_devices = cursor.fetchall()
+        if conflicts:
+            for device_name, owners_csv in conflicts:
+                print(f"Device {device_name} is owned by: {owners_csv}")
+            return False
 
-    if conflicting_devices:
-        for device_name, user_name in conflicting_devices:
-            print(f"Device {device_name} is owned by user '{user_name}'")
-        return False
-    
-    return True
+        return True
+    finally:
+        cursor.close()
+        conn.close()
 
     # Query active_bookings with current user or unallocated devices
     # cursor.execute(
