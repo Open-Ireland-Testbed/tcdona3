@@ -6,10 +6,10 @@ from typing import Dict, Any
 PROMPT_PATTERN = r"[>#]\s*$"
 
 DEVICE_MAP = {
-    "tf_1": {"ip": "10.10.10.91", "line_port": "1/1/n1"},
+    "tf_1": {"ip": "10.10.10.92", "line_port": "1/1/n1"},
     "tf_2": {"ip": "10.10.10.92", "line_port": "1/1/n2"},
-    "tf_3": {"ip": "10.10.10.93", "line_port": "1/2/n1"},
-    "tf_4": {"ip": "10.10.10.94", "line_port": "1/2/n2"},
+    "tf_3": {"ip": "10.10.10.92", "line_port": "1/2/n1"},
+    "tf_4": {"ip": "10.10.10.92", "line_port": "1/2/n2"},
 }
 
 class TeraflexSSH:
