@@ -46,8 +46,6 @@ _try_import("monitor", ["Monitor", "RoadmMonitor"])
 
 # OSA and related
 _try_import("osa", ["OSA"])
-_try_import("osa_server", ["OSAServer"])
-
 # Other instruments
 _try_import("yokogawa", ["Yokogawa"])
 _try_import("quadflex", ["QuadFlex"])
