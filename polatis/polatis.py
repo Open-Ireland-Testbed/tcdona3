@@ -24,6 +24,7 @@ from typing import Dict, List, Tuple, Optional
 import mysql.connector
 from ncclient import manager
 from lxml import etree
+from tcdona3.utils import check_patch_owners
 
 logger = logging.getLogger(__name__)
 
@@ -651,6 +652,11 @@ class Polatis:
         if not isinstance(patch_list, list) or not patch_list:
             raise Exception("patch_list must be a non-empty list of tuples")
 
+        if not check_patch_owners(patch_list):
+            raise Exception(
+                "apply_patch_list failed, some (or all) ports are not available. Please contact admin."
+            )
+
         pairs_xml: List[str] = []
         for (input_comp, output_comp) in patch_list:
             inp = self.get_inport(input_comp)
@@ -679,6 +685,11 @@ class Polatis:
         """
         if not isinstance(patch_list, list) or not patch_list:
             raise Exception("patch_list must be a non-empty list of tuples")
+
+        if not check_patch_owners(patch_list):
+            raise Exception(
+                "disconnect_patch_list failed, some (or all) ports are not available. Please contact admin."
+            )
 
         pairs_xml: List[str] = []
         for (input_comp, output_comp) in patch_list:
@@ -730,9 +741,17 @@ class Polatis:
             writer.writerows(rows)
 
     def print_patch_table(self, patch_list: List[Tuple[str, str]]):
-        for row in self._get_patch_data(patch_list):
-            name, direction, port, power = row
-            print(f"{name} ({port}) [{direction}]: {power:.2f} dBm")
+        if not isinstance(patch_list, list) or not patch_list:
+            raise Exception("patch_list must be a non-empty list of tuples")
+
+        for patch in patch_list:
+            inx, outx = patch
+            inp = self.get_inport(inx)
+            outp = self.get_outport(outx)
+            inpower = self.get_port_power(int(inp))
+            outpower = self.get_port_power(int(outp))
+            data = f"{inx}({inp}): {inpower:.2f} dBm ----> {outx}({outp}): {outpower:.2f} dBm"
+            print(data)
 
     # ------------------------------------------------------------------
     # Legacy methods with no clean NETCONF equivalent
