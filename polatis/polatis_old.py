@@ -3,7 +3,8 @@ import telnetlib
 import re
 import pandas as pd
 import time
-import os, getpass
+import os
+import getpass
 from datetime import datetime
 import sqlite3
 import csv
