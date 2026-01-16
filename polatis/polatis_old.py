@@ -351,7 +351,8 @@ class Polatis:
 
                 # Set owner to NULL where the owner is the Unix user and the name matches
                 cursor.execute(
-                    f'UPDATE ports_new SET Owner = "{username}" WHERE Name = "{name}"'
+                    "UPDATE ports_new SET Owner = %s WHERE Name = %s",
+                    (username, name),
                 )
 
         # Commit the changes
