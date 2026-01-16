@@ -13,7 +13,7 @@ from importlib import import_module
 __all__ = []
 
 
-def _try_import(module_name: str, names: list[str]) -> None:
+def _try_import(module_name: str, names: list) -> None:
     """
     Try to import `tcdona3.<module_name>` and re-export the given
     attribute names if present. Failures are ignored so that
@@ -21,7 +21,7 @@ def _try_import(module_name: str, names: list[str]) -> None:
     """
     try:
         mod = import_module(f".{module_name}", __name__)
-    except Exception:
+    except ImportError:
         # Optional dependency or environment-specific module failed to import
         return
 
@@ -33,6 +33,7 @@ def _try_import(module_name: str, names: list[str]) -> None:
 
 # Core / top-level devices
 _try_import("polatis", ["Polatis", "PolatisNetconf"])
+_try_import("polatis_old", ["Polatis"])
 _try_import("lumentum", ["Lumentum"])
 _try_import("ila", ["ILA"])
 _try_import("cassini", ["Cassini"])

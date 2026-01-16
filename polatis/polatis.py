@@ -18,8 +18,6 @@ Features:
 Unsupported legacy telnet-only behaviours raise NotImplementedError.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Dict, List, Tuple, Optional
 
