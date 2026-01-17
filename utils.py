@@ -68,7 +68,7 @@ def check_patch_owners(patch_list):
         return True
 
     conn = mysql.connector.connect(
-        host=os.getenv("DB_HOST", "10.10.10.8"),
+        host=os.getenv("DB_HOST", "10.10.10.4"),
         user=os.getenv("DB_USER", "testbed"),
         password=os.getenv("DB_PASSWORD", "mypassword"),
         database=os.getenv("DB_NAME", "provdb")
