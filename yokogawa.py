@@ -12,6 +12,10 @@ class YokogawaOSA:
         self.rm = pyvisa.ResourceManager()
 
     def connect(self):
+
+        if not check_patch_owners([("Yoko_OSA", "Yoko_OSA")]):
+            raise Exception("You are not authorized to use this device")
+        
         self.osa = self.rm.open_resource(f"TCPIP::{self.ip}::{self.port}::SOCKET")
         self.osa.read_termination = '\n'
         self.osa.write_termination = '\n'
