@@ -3,6 +3,7 @@ import pyvisa
 import numpy as np
 import matplotlib.pyplot as plt
 import json
+from tcdona3.utils import *
 
 class YokogawaOSA:
     def __init__(self, ip: str, port: int = 10001):
@@ -12,6 +13,10 @@ class YokogawaOSA:
         self.rm = pyvisa.ResourceManager()
 
     def connect(self):
+
+        if not check_patch_owners([("Yoko_OSA", "Yoko_OSA")]):
+            raise Exception("You are not authorized to use this device")
+        
         self.osa = self.rm.open_resource(f"TCPIP::{self.ip}::{self.port}::SOCKET")
         self.osa.read_termination = '\n'
         self.osa.write_termination = '\n'
