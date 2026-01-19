@@ -3,6 +3,7 @@ import pyvisa
 import numpy as np
 import matplotlib.pyplot as plt
 import json
+from tcdona3.utils import *
 
 class YokogawaOSA:
     def __init__(self, ip: str, port: int = 10001):
