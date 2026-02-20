@@ -95,7 +95,10 @@ class Polatis:
         """
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
+            host=os.getenv("DB_HOST", "10.10.10.4"),
+            user="testbed",
+            password="mypassword",
+            database="provdb",
         )
         cursor = conn.cursor()
         cursor.execute("SELECT `Out_Port` FROM device_table WHERE polatis_name = %s", (inx,))
@@ -114,7 +117,10 @@ class Polatis:
         """
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
+            host=os.getenv("DB_HOST", "10.10.10.4"),
+            user="testbed",
+            password="mypassword",
+            database="provdb",
         )
         cursor = conn.cursor()
         cursor.execute("SELECT `In_Port` FROM device_table WHERE polatis_name = %s", (outx,))
@@ -185,7 +191,10 @@ class Polatis:
 
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
+            host=os.getenv("DB_HOST", "10.10.10.4"),
+            user="testbed",
+            password="mypassword",
+            database="provdb",
         )
         cursor = conn.cursor()
 
@@ -293,7 +302,10 @@ class Polatis:
 
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="127.0.0.1", user="testbed", password="mypassword", database="provdb"
+            host=os.getenv("DB_HOST", "10.10.10.4"),
+            user="testbed",
+            password="mypassword",
+            database="provdb",
         )
         cursor = conn.cursor()
 
@@ -339,7 +351,10 @@ class Polatis:
 
         # Connect to the MySQL database
         conn = mysql.connector.connect(
-            host="127.0.0.1", user=admin_user, password=password, database="provdb"
+            host=os.getenv("DB_HOST", "10.10.10.4"),
+            user=admin_user,
+            password=password,
+            database="provdb",
         )
         cursor = conn.cursor()
 
