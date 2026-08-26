@@ -313,6 +313,149 @@ class Lumentum(object):
             print(e)
             raise RuntimeError(e)
 
+    def fetch_all_telemetry(self):
+        """
+        Fetch WSS connections, monitored channels, and EDFA info via 3
+        individual NETCONF RPCs (the Lumentum server does not support
+        combined multi-subtree filters).
+
+        Populates:
+            self.wss_connections (dict): Per-direction WSS connection data.
+                Keys: ``"mux"`` / ``"demux"`` -> ``"conn-N"`` -> dict with:
+                    ``id``, ``connection-id``, ``start-freq``, ``end-freq``,
+                    ``attenuation``, ``blocked``, ``input-port``,
+                    ``input-power``, ``input-valid-data``, ``output-port``,
+                    ``output-power``, ``output-valid-data``.
+
+            self.monitored_channels (dict): Per-direction OCM monitored data.
+                Keys: ``"mux"`` / ``"demux"`` -> ``"mon-N"`` -> dict with:
+                    ``id``, ``power``, ``frequency``.
+
+            self.edfa_info (dict): Booster and preamp amplifier state.
+                Keys: ``"booster"`` / ``"preamp"`` -> dict with:
+                    ``control_mode``, ``maintenance_state``, ``target_power``,
+                    ``target_gain``, ``target_gain_tilt``, ``input_power``,
+                    ``output_power``, ``voa_input_power``, ``voa_output_power``,
+                    ``voa_attenuation``.
+
+        Returns:
+            tuple: ``(wss_connections, monitored_channels, edfa_info)``
+        """
+        def strip_ns(d):
+            if isinstance(d, dict):
+                return {k.split(":", 1)[-1]: strip_ns(v) for k, v in d.items()}
+            elif isinstance(d, list):
+                return [strip_ns(item) for item in d]
+            return d
+
+        def rpc_get(filter_xml):
+            raw = self.m.get(filter=('subtree', to_ele(filter_xml)))
+            return strip_ns(xmltodict.parse(raw.data_xml).get("data", {}))
+
+        try:
+            conns_data = rpc_get(
+                '<connections xmlns="http://www.lumentum.com/lumentum-ote-connection"/>')
+            mon_data = rpc_get(
+                '<monitored-channels xmlns="http://www.lumentum.com/lumentum-ote-monitored-channel"/>')
+            edfa_data = rpc_get(
+                '<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa"/>')
+        except Exception as e:
+            print("Encountered the following RPC error!")
+            print(e)
+            raise RuntimeError(e)
+
+        # --- WSS connections ---
+        self.wss_connections = {"mux": {}, "demux": {}}
+        conns_node = conns_data.get("connections", {}).get("connection")
+        if conns_node:
+            connections = conns_node if isinstance(conns_node, list) else [conns_node]
+            has_mux = any("module=1" in str(c) for c in connections)
+            has_demux = any("module=2" in str(c) for c in connections)
+
+            for cur_conn in connections:
+                if "module=1" in str(cur_conn) and has_mux:
+                    side = "mux"
+                elif "module=2" in str(cur_conn) and has_demux:
+                    side = "demux"
+                else:
+                    continue
+
+                cid = len(self.wss_connections[side]) + 1
+                key = f"conn-{cid}"
+                st = cur_conn.get("state", {})
+                cfg = cur_conn.get("config", {})
+                ch_in = st.get("input-channel-attributes", {})
+                ch_out = st.get("output-channel-attributes", {})
+
+                self.wss_connections[side][key] = {
+                    "id": cid,
+                    "connection-id": str(st.get("entity-description", "")),
+                    "start-freq": float(st.get("start-freq", 0)),
+                    "end-freq": float(st.get("end-freq", 0)),
+                    "attenuation": float(st.get("attenuation", 0)),
+                    "blocked": str(st.get("blocked", "")),
+                    "input-port": int(str(cfg.get("input-port-reference", "")).split("port=", 1)[-1]) if cfg.get("input-port-reference") else 0,
+                    "input-power": float(ch_in.get("power", 0)),
+                    "input-valid-data": str(ch_in.get("valid-data", "")),
+                    "output-port": int(str(cfg.get("output-port-reference", "")).split("port=", 1)[-1]) if cfg.get("output-port-reference") else 0,
+                    "output-power": float(ch_out.get("power", 0)),
+                    "output-valid-data": str(ch_out.get("valid-data", "")),
+                }
+
+        # --- Monitored channels ---
+        self.monitored_channels = {"mux": {}, "demux": {}}
+        mon_node = mon_data.get("monitored-channels", {}).get("monitored-channel")
+        if mon_node:
+            mon_list = mon_node if isinstance(mon_node, list) else [mon_node]
+            mon_mux_id = 0
+            mon_demux_id = 0
+            for cur_monchan in mon_list:
+                monchan_str = str(cur_monchan)
+                if "port=6201" in monchan_str:
+                    mon_mux_id += 1
+                    key = f"mon-{mon_mux_id}"
+                    st = cur_monchan.get("state", {})
+                    self.monitored_channels["mux"][key] = {
+                        "id": mon_mux_id,
+                        "power": float(st.get("power", 0)),
+                        "frequency": float(st.get("measured-frequency", 0)),
+                    }
+                elif "port=3101" in monchan_str:
+                    mon_demux_id += 1
+                    key = f"mon-{mon_demux_id}"
+                    st = cur_monchan.get("state", {})
+                    self.monitored_channels["demux"][key] = {
+                        "id": mon_demux_id,
+                        "power": float(st.get("power", 0)),
+                        "frequency": float(st.get("measured-frequency", 0)),
+                    }
+
+        # --- EDFA info ---
+        edfas_node = edfa_data.get("edfas", {}).get("edfa")
+        if edfas_node:
+            entries = edfas_node if isinstance(edfas_node, list) else [edfas_node]
+            for idx, module in enumerate(("booster", "preamp")):
+                if idx >= len(entries):
+                    break
+                entry = entries[idx]
+                cfg = strip_ns(entry.get("config", {}))
+                st = strip_ns(entry.get("state", {}))
+                voa = strip_ns(st.get("voas", {}).get("voa", {}))
+                self.edfa_info[module] = {
+                    "control_mode": cfg.get("control-mode"),
+                    "maintenance_state": cfg.get("maintenance-state"),
+                    "target_power": float(cfg.get("target-power", 0)),
+                    "target_gain": float(cfg.get("target-gain", 0)),
+                    "target_gain_tilt": float(cfg.get("target-gain-tilt", 0)),
+                    "input_power": float(st.get("input-power", 0)),
+                    "output_power": float(st.get("output-power", 0)),
+                    "voa_input_power": float(voa.get("voa-input-power", 0)),
+                    "voa_output_power": float(voa.get("voa-output-power", 0)),
+                    "voa_attenuation": float(voa.get("voa-attentuation", 0)),
+                }
+
+        return self.wss_connections, self.monitored_channels, self.edfa_info
+
     def __edfa_los_mode(self, edfa_module, los_shutdown):
 
         if los_shutdown not in ["true", "false"]:
