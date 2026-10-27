@@ -1,4 +1,4 @@
-__version__ = "1.0.4"
+__version__ = "1.1.0"
 # tcdona3/__init__.py
 """
 Top-level package for the Open Ireland Optical Testbed v3 control code.
