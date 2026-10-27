@@ -27,6 +27,7 @@ Contents
    lumentum
    monitor
    resources
+   hardware_tests
 
 .. toctree::
    :maxdepth: 1

@@ -15,3 +15,6 @@ python -m pytest                        # from the repository root
 
 The suite runs on the production interpreter (Python 3.6, pytest 7.0) and on newer ones; it also checks
 that the maintained modules need at most Python 3.6 (with `vermin`, when installed).
+
+`tests/hardware/` has one script per driver that checks it on the real device and leaves the device as it
+found it; see `docs/hardware_tests.rst` before running them.
