@@ -181,14 +181,12 @@ def test_a_commit_error_propagates(ila):
         device.set_target_gain("ab", 15.0)
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: True is sent as 'True', not a YANG boolean")
 def test_set_amp_state_accepts_a_bool(ila):
     device, fake = ila
     device.set_amp_state("ab", True)
     assert edit_then_commit(fake)["enabled"] == "true"
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: a NaN gain is sent to the device")
 def test_a_nan_gain_is_refused_before_any_rpc(ila):
     device, fake = ila
     with pytest.raises(ValueError):
