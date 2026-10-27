@@ -138,6 +138,12 @@ class Lumentum(object):
         """
         Automatic Laser Shutdown (ALS) is a safety feature that automatically shuts down the laser if there is no light detected at the Preamp. This method can be used to disable Automatic Laser Shutdown for a specified duration. Do NOT set this to higher than 1000s.
 
+        On a line that starts and ends at this ROADM, taking the booster out of service even for a moment (as the
+        EDFA setters do) can leave the line dark: no light comes back to the preamp, so the ALS keeps the booster
+        off, and the in-line amplifiers shut down for lack of input. The line does not come back by itself; this
+        method brings it back: the booster lights the line again during ``duration``, long enough for the light
+        to reach the preamp (60 s is enough).
+
         :param duration: The duration for which ALS should be disabled
         :type duration: int
 
