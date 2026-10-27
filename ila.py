@@ -218,7 +218,8 @@ class ILA:
 
     def _amplifier_leaf(self, amp, branch, leaf):
         """One leaf of amplifier ``amp``: of its running ``config`` (``get_config``) or of its ``state``
-        (``get``), as the device returns it (str)."""
+        (``get``), as the device returns it (str). A state counter the device wraps in ``<instant>`` is
+        unwrapped."""
         filter = """
                 <open-optical-device xmlns="http://org/openroadm/device">
                 <optical-amplifier>
@@ -240,6 +241,8 @@ class ILA:
         amplifier = xmltodict.parse(reply.data_xml)["data"]["open-optical-device"]["optical-amplifier"][
             "amplifiers"]["amplifier"]
         value = amplifier[branch][leaf]
+        if isinstance(value, dict) and "instant" in value:
+            value = value["instant"]
         return value.get("#text") if isinstance(value, dict) else value
 
     def _setpoint(self, value, name):

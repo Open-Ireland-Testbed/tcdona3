@@ -225,9 +225,11 @@ def test_config_readers(managers, method, leaf, value):
                                          ("get_actual_gain_tilt", "actual-gain-tilt"),
                                          ("get_input_power", "input-power-total"),
                                          ("get_output_power", "output-power-total")])
-def test_state_readers_are_floats_from_the_operational_state(managers, method, leaf):
+@pytest.mark.parametrize("value", ["-12.25", "<instant>-12.25</instant>"], ids=["plain", "instant"])
+def test_state_readers_are_floats_from_the_operational_state(managers, method, leaf, value):
+    """The TCX-1000 wraps its state counters in ``<instant>``."""
     device, fake = new(managers)
-    fake.replies["get"] = Reply(amplifier("ba", "state", leaf, "-12.25"))
+    fake.replies["get"] = Reply(amplifier("ba", "state", leaf, value))
     assert getattr(device, method)("ba") == -12.25
     sent = leaves(payload(fake.calls_to("get")[0], "filter"))
     assert sent["name"] == "ba" and leaf in sent
