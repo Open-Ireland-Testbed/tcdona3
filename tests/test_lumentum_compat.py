@@ -218,7 +218,6 @@ def test_control_mode_setters_take_the_module_out_of_service_then_configure_it(r
     assert all(call.kwargs["target"] == "running" for call in fake.calls_to("edit_config"))
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: the demux setter takes the booster (edfa=1) out of service")
 def test_set_demux_constant_gain_takes_the_preamp_out_of_service(roadm):
     device, fake = roadm
     device.set_demux_constant_gain(20.0)
@@ -245,7 +244,6 @@ def test_gain_mode_setters_configure_their_module(roadm, method, module, gain_mo
     assert configured["gain-switch-mode"] == gain_mode and configured["control-mode"] == "constant-power"
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: the demux gain modes take the booster out of service")
 @pytest.mark.parametrize("method", ["set_demux_low_gain_mode", "set_demux_high_gain_mode"])
 def test_demux_gain_modes_take_the_preamp_out_of_service(roadm, method):
     device, fake = roadm
@@ -282,7 +280,6 @@ def test_edfa_config_refuses_an_unknown_module(roadm):
         device.edfa_config("middle")
 
 
-@pytest.mark.xfail(strict=True, raises=SystemExit, reason="known bug: edfa_config calls exit(1) on an RPC error")
 def test_edfa_config_raises_a_runtime_error_on_an_rpc_error(roadm):
     device, fake = roadm
     fake.replies["get"] = Reply(data.EDFAS)
@@ -316,7 +313,6 @@ def test_ports_get_info_shape(roadm):
     assert info["6201"] == {"entity-description": "Monitor", "operational-state": "in-service"}
 
 
-@pytest.mark.xfail(strict=True, raises=SystemExit, reason="known bug: the ports readers call exit(1)")
 @pytest.mark.parametrize("method", ["get_ports_info", "ports_get_info"])
 def test_a_ports_rpc_error_is_a_runtime_error(roadm, method):
     device, fake = roadm
@@ -398,7 +394,6 @@ def test_monitored_channels(roadm):
     assert device.wss_get_monitored_power("other") is None
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: no monitored channel raises UnboundLocalError")
 def test_no_monitored_channels_is_empty(roadm):
     device, fake = roadm
     fake.replies["get"] = Reply(data.monitored_channels())
@@ -495,7 +490,6 @@ def test_wss_outport_on_a_list(roadm):
     assert [s["output-port-reference"] for s in dispatched(fake)] == ["ne=1;chassis=1;card=1;port=5203"] * 2
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: the scalar wss_outport sends malformed XML")
 def test_set_demux_port_sets_the_output_port(roadm):
     device, fake = roadm
     device.set_demux_port(3, 2)
