@@ -1,0 +1,1860 @@
+{
+ "ila.ILA": {
+  "__init__": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "device"
+   }
+  ],
+  "get_amp_state": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "amp"
+   }
+  ],
+  "get_evoa_atten": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "amp"
+   }
+  ],
+  "get_pm_xml": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_target_gain": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "amp"
+   }
+  ],
+  "set_amp_state": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "amp"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "state"
+   }
+  ],
+  "set_evoa_atten": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "amp"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "atten"
+   }
+  ],
+  "set_target_gain": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "amp"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "gain"
+   }
+  ]
+ },
+ "lumentum.Lumentum": {
+  "__init__": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "roadm_name"
+   },
+   {
+    "default": "False",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "DEBUG"
+   }
+  ],
+  "apply_demux_grid": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_list"
+   }
+  ],
+  "apply_mux_grid": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_list"
+   }
+  ],
+  "debug_edfa": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "False",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "DEBUG"
+   }
+  ],
+  "disable_als": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "10",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "duration"
+   }
+  ],
+  "edfa_config": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "edfa_module"
+   },
+   {
+    "default": "'true'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "los_shutdown"
+   },
+   {
+    "default": "'in-service'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "maintenance_state"
+   },
+   {
+    "default": "'constant-power'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "control_mode"
+   },
+   {
+    "default": "'low-gain'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "gain_switch_mode"
+   },
+   {
+    "default": "0.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_gain"
+   },
+   {
+    "default": "-10.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_power"
+   },
+   {
+    "default": "0.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_gain_tilt"
+   },
+   {
+    "default": "-50.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "optical_loo_threshold"
+   }
+  ],
+  "edfa_get_info": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "generate_wide_channel_demux": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_list"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "output_port"
+   },
+   {
+    "default": "2",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": "5101",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "input_port"
+   },
+   {
+    "default": "4.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "loss"
+   },
+   {
+    "default": "[]",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "open_channels"
+   },
+   {
+    "default": "None",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_additional_attenuations"
+   },
+   {
+    "default": "False",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "blocked"
+   }
+  ],
+  "generate_wide_channel_mux": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_list"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "input_port"
+   },
+   {
+    "default": "1",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": "4201",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "output_port"
+   },
+   {
+    "default": "4.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "loss"
+   },
+   {
+    "default": "[]",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "open_channels"
+   },
+   {
+    "default": "None",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_additional_attenuations"
+   },
+   {
+    "default": "False",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "blocked"
+   }
+  ],
+  "get_demux_connection_input_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_demux_connection_output_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_demux_edfa_input_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_demux_edfa_output_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_demux_monitored_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_demux_target_gain": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_demux_target_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_edfa_info": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_mux_connection_input_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_mux_connection_output_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_mux_edfa_input_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_mux_edfa_output_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_mux_monitored_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_mux_target_gain": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_mux_target_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_ports_info": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_power_by_module_and_direction": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_module_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "direction"
+   }
+  ],
+  "get_target_gain_by_module": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_module_id"
+   }
+  ],
+  "get_target_power_by_module": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_module_id"
+   }
+  ],
+  "make_grid": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "'both'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "device"
+   },
+   {
+    "default": "[]",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "open_channels"
+   },
+   {
+    "default": "True",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "rmv"
+   },
+   {
+    "default": "4101",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "in_port"
+   },
+   {
+    "default": "5201",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "out_port"
+   },
+   {
+    "default": "50.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_spacing"
+   },
+   {
+    "default": "50.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_width"
+   }
+  ],
+  "operator_flex_grid_demux_connections": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "drop_list"
+   },
+   {
+    "default": "2",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": "5101",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "input_port"
+   },
+   {
+    "default": "50.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_spacing"
+   },
+   {
+    "default": "50.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_width"
+   },
+   {
+    "default": "191350.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "central_freq_input"
+   },
+   {
+    "default": "4.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "loss"
+   },
+   {
+    "default": "95",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_quantity"
+   },
+   {
+    "default": "[]",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "open_channels"
+   },
+   {
+    "default": "None",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_additional_attenuations"
+   },
+   {
+    "default": "1",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "default_port"
+   }
+  ],
+  "operator_flex_grid_mux_connections": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "add_list"
+   },
+   {
+    "default": "1",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": "4201",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "output_port"
+   },
+   {
+    "default": "50.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_spacing"
+   },
+   {
+    "default": "50.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_width"
+   },
+   {
+    "default": "191350.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "central_freq_input"
+   },
+   {
+    "default": "4.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "loss"
+   },
+   {
+    "default": "95",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_quantity"
+   },
+   {
+    "default": "[]",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "open_channels"
+   },
+   {
+    "default": "None",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_additional_attenuations"
+   },
+   {
+    "default": "1",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "default_port"
+   }
+  ],
+  "ports_get_info": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "set_demux_atten": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   },
+   {
+    "default": "0.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "atten"
+   }
+  ],
+  "set_demux_block": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   }
+  ],
+  "set_demux_block_status": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_list"
+   }
+  ],
+  "set_demux_constant_gain": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_gain"
+   },
+   {
+    "default": "0.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_gain_tilt"
+   }
+  ],
+  "set_demux_constant_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_power"
+   },
+   {
+    "default": "0.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_gain_tilt"
+   }
+  ],
+  "set_demux_high_gain_mode": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "set_demux_low_gain_mode": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "set_demux_port": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "port"
+   }
+  ],
+  "set_demux_unblock": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   }
+  ],
+  "set_mux_atten": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   },
+   {
+    "default": "0.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "atten"
+   }
+  ],
+  "set_mux_block": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   }
+  ],
+  "set_mux_block_status": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_list"
+   }
+  ],
+  "set_mux_constant_gain": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_gain"
+   },
+   {
+    "default": "0.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_gain_tilt"
+   }
+  ],
+  "set_mux_constant_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_power"
+   },
+   {
+    "default": "0.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "target_gain_tilt"
+   }
+  ],
+  "set_mux_high_gain_mode": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "set_mux_low_gain_mode": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "set_mux_port": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "port"
+   }
+  ],
+  "set_mux_unblock": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   }
+  ],
+  "wss_add_connection": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "start_freq"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "end_freq"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "attenuation"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "blocked"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "maintenance_state"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "input_port"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "output_port"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "custom_name"
+   }
+  ],
+  "wss_add_connections": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connections"
+   }
+  ],
+  "wss_atten": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "output_port"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   },
+   {
+    "default": "0.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "atten"
+   }
+  ],
+  "wss_block": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "output_port"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "blocked"
+   }
+  ],
+  "wss_block_status_config": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "output_port"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   }
+  ],
+  "wss_delete_connection": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   }
+  ],
+  "wss_gen_connections_dwdm": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "input_port"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "output_port"
+   },
+   {
+    "default": "50.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_spacing"
+   },
+   {
+    "default": "50.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_width"
+   },
+   {
+    "default": "191350.0",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "central_freq_input"
+   },
+   {
+    "default": "'4.0'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "loss"
+   },
+   {
+    "default": "[]",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "open_channels"
+   },
+   {
+    "default": "None",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "channel_additional_attenuations"
+   }
+  ],
+  "wss_get_connection_xml": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_connection"
+   }
+  ],
+  "wss_get_connections": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "wss_get_connections_input_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_module"
+   }
+  ],
+  "wss_get_connections_output_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_module"
+   }
+  ],
+  "wss_get_monitored_channels": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "wss_get_monitored_power": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_module"
+   }
+  ],
+  "wss_inport": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "port"
+   }
+  ],
+  "wss_outport": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wss_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "connection_id"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "port"
+   }
+  ],
+  "wss_print_connections": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ]
+ },
+ "teraflex_paramiko.TeraflexSSH": {
+  "__init__": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "tf_name"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "username"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "password"
+   },
+   {
+    "default": "10",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "timeout"
+   }
+  ],
+  "close": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_current_config": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "read_pm_data": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "return_current_config": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "'ot400'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "logical"
+   }
+  ]
+ },
+ "yokogawa.YokogawaOSA": {
+  "__init__": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "ip"
+   },
+   {
+    "default": "10001",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "port"
+   }
+  ],
+  "abort": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "connect": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_auto_measure_status": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_data_logging_source": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_resolution_bandwidth": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "get_trace_data": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "'TRA'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "trace_name"
+   }
+  ],
+  "get_wavelength_data": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "'TRA'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "trace_name"
+   }
+  ],
+  "identify": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "measure_spectrum_width": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "save_trace_data": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "osa"
+   },
+   {
+    "default": "'trace.json'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "json_path"
+   },
+   {
+    "default": "'spectrum.png'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "fig_path"
+   }
+  ],
+  "set_attenuator": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "status"
+   }
+  ],
+  "set_auto_measure": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "status"
+   }
+  ],
+  "set_auto_sweep_points": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "status"
+   }
+  ],
+  "set_center_wavelength": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wavelength_nm"
+   }
+  ],
+  "set_peak_search": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "set_resolution_bandwidth": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "'0.1NM'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "value"
+   }
+  ],
+  "set_sweep_mode": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "mode"
+   }
+  ],
+  "set_sweep_points": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "points"
+   }
+  ],
+  "set_wavelength_center": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "wavelength_nm"
+   }
+  ],
+  "set_wavelength_range": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "start_nm"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "stop_nm"
+   }
+  ],
+  "set_wavelength_span": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "span_nm"
+   }
+  ],
+  "store_graphics": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "'test001'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "name"
+   },
+   {
+    "default": "'INTERNAL'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "location"
+   }
+  ],
+  "store_memory": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "'test001'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "name"
+   },
+   {
+    "default": "'INTERNAL'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "location"
+   }
+  ],
+  "store_trace": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   },
+   {
+    "default": "'test001'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "name"
+   },
+   {
+    "default": "'INTERNAL'",
+    "has_default": true,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "location"
+   }
+  ],
+  "sweep": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ],
+  "wait_for_sweep_complete": [
+   {
+    "default": null,
+    "has_default": false,
+    "kind": "POSITIONAL_OR_KEYWORD",
+    "name": "self"
+   }
+  ]
+ }
+}
