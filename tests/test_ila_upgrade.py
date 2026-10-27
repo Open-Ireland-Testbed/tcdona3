@@ -1,0 +1,238 @@
+"""The features ``ILA`` gained from ols-control-app: transactional writes, validation, options, new methods."""
+
+import pytest
+
+import tcdona3.ila as ila_module
+from tcdona3 import _netconf
+from tcdona3.ila import ILA
+
+from fakes import FakeNetconfManager, Reply, leaves, payload
+
+OOD = 'xmlns="http://org/openroadm/device"'
+NC = 'xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"'
+
+
+class TransportError(Exception):
+    """Named like ncclient's: a dropped session."""
+
+
+def amplifier(amp, branch, leaf, value):
+    return ("<data %s><open-optical-device %s><optical-amplifier><amplifiers><amplifier><name>%s</name>"
+            "<%s><%s>%s</%s></%s></amplifier></amplifiers></optical-amplifier></open-optical-device></data>"
+            % (NC, OOD, amp, branch, leaf, value, leaf, branch))
+
+
+def evoa(number, value):
+    return ("<data %s><open-optical-device %s><evoas><evoa-id>%d</evoa-id><evoa><attn-value>%s</attn-value></evoa>"
+            "</evoas></open-optical-device></data>" % (NC, OOD, number, value))
+
+
+YANG_AMP = """module openconfig-optical-amplifier {
+  grouping config {
+    leaf target-gain { type oc-types:ieeefloat32-3; }
+    leaf target-gain-tilt { type decimal64 { fraction-digits 2; } }
+    leaf target-output-power { type decimal64 { fraction-digits 2; } }
+  }
+}"""
+YANG_TYPES = "module openconfig-types { typedef ieeefloat32-3 { type decimal64 { fraction-digits 3; } } }"
+
+
+@pytest.fixture
+def managers(monkeypatch):
+    queue, calls = [], []
+
+    def connect(**kwargs):
+        calls.append(kwargs)
+        return queue.pop(0) if queue else FakeNetconfManager()
+
+    monkeypatch.setattr(ila_module, "check_patch_owners", lambda patches: True)
+    monkeypatch.setattr(ila_module.manager, "connect", connect)
+    return queue, calls
+
+
+def new(managers, fake=None, **options):
+    queue, _ = managers
+    fake = fake or FakeNetconfManager()
+    queue.append(fake)
+    return ILA("ila_1", **options), fake
+
+
+TRANSACTION = ["lock", "discard_changes", "edit_config", "commit", "unlock"]
+
+
+# ---------------------------------------------------------------------------------------------- transactions
+def test_a_write_is_one_locked_transaction(managers):
+    device, fake = new(managers)
+    device.set_target_gain("ab", 15.0)
+    assert fake.names() == TRANSACTION
+    assert fake.calls[0].args == ("candidate",)
+
+
+def test_a_failed_commit_is_discarded_and_the_lock_released(managers):
+    device, fake = new(managers, FakeNetconfManager(fail_on={"commit": RuntimeError("refused")}))
+    with pytest.raises(RuntimeError):
+        device.set_amp_state("ab", "true")
+    assert fake.names() == ["lock", "discard_changes", "edit_config", "commit", "discard_changes", "unlock"]
+
+
+def test_reconnect_applies_an_interrupted_transaction_again(managers):
+    queue, calls = managers
+    first = FakeNetconfManager(fail_on={"edit_config": TransportError("session closed")})
+    second = FakeNetconfManager()
+    queue.extend([first, second])
+    device = ILA("ila_1", reconnect=True)
+    assert isinstance(device.m, _netconf.ReconnectingSession)
+    device.set_evoa_atten("ab", 3.0)
+    assert first.names()[:3] == ["lock", "discard_changes", "edit_config"] and first.names()[-1] == "unlock"
+    # the clean-up discard of the interrupted edit reaches the new session, then the whole transaction
+    assert second.names()[-len(TRANSACTION):] == TRANSACTION
+    assert len(second.calls_to("edit_config")) == 1 and len(second.calls_to("commit")) == 1
+    assert len(calls) == 2
+
+
+def test_without_reconnect_a_dropped_session_propagates(managers):
+    device, fake = new(managers, FakeNetconfManager(fail_on={"edit_config": TransportError("session closed")}))
+    with pytest.raises(TransportError):
+        device.set_target_gain("ab", 15.0)
+
+
+def test_reconnect_repeats_a_read(managers):
+    queue, _ = managers
+    first = FakeNetconfManager(fail_on={"get_config": TransportError("session closed")})
+    second = FakeNetconfManager(replies={"get_config": Reply(amplifier("ab", "config", "target-gain", "15.00"))})
+    queue.extend([first, second])
+    assert ILA("ila_1", reconnect=True).get_target_gain("ab") == "15.00"
+
+
+def test_timeout_is_passed_to_connect(managers):
+    _, calls = managers
+    new(managers, timeout=20)
+    assert calls[-1]["timeout"] == 20
+
+
+def test_close_and_context_manager(managers):
+    queue, _ = managers
+    fake = FakeNetconfManager()
+    queue.append(fake)
+    with ILA("ila_1") as device:
+        pass
+    assert fake.closed
+
+
+# ------------------------------------------------------------------------------------------------ validation
+@pytest.mark.parametrize("call", [lambda d: d.set_target_gain("ab", float("inf")),
+                                  lambda d: d.set_target_gain("ab", "high"),
+                                  lambda d: d.set_target_gain("cd", 15.0),
+                                  lambda d: d.set_amp_state("ab", "on"),
+                                  lambda d: d.set_amp_state("xy", True),
+                                  lambda d: d.set_evoa_atten("ab", float("nan")),
+                                  lambda d: d.set_target_gain_tilt("ab", float("nan")),
+                                  lambda d: d.set_gain_range("ab", "ULTRA_GAIN_RANGE")])
+def test_invalid_values_are_refused_before_any_rpc(managers, call):
+    device, fake = new(managers)
+    with pytest.raises(ValueError):
+        call(device)
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize("state,leaf", [(True, "true"), (False, "false"), ("TRUE", "true"), (" false ", "false")])
+def test_states_are_yang_booleans(managers, state, leaf):
+    device, fake = new(managers)
+    device.set_amp_state("ba", state)
+    assert leaves(payload(fake.calls_to("edit_config")[0]))["enabled"] == leaf
+
+
+def test_a_numeric_string_gain_is_accepted(managers):
+    device, fake = new(managers)
+    device.set_target_gain("ab", "16.5")
+    assert leaves(payload(fake.calls_to("edit_config")[0]))["target-gain"] == "16.5"
+
+
+@pytest.mark.parametrize("value", [-1, 1.5, "2", True])
+def test_invalid_options_are_refused(managers, value):
+    with pytest.raises(ValueError):
+        new(managers, setpoint_digits=value)
+    with pytest.raises(ValueError):
+        new(managers, evoa_numbering="other")
+
+
+# ----------------------------------------------------------------------------------------------------- options
+def test_setpoint_digits_as_an_int(managers):
+    device, fake = new(managers, setpoint_digits=2)
+    device.set_target_gain("ab", 15.123)
+    assert leaves(payload(fake.calls_to("edit_config")[0]))["target-gain"] == "15.12"
+
+
+def test_setpoint_digits_from_the_device_yang(managers):
+    fake = FakeNetconfManager(schemas={"openconfig-optical-amplifier": YANG_AMP, "openconfig-types": YANG_TYPES})
+    device, fake = new(managers, fake, setpoint_digits="device")
+    assert device.number_of_digits == 2
+    device.set_target_gain_tilt("ab", -0.456)
+    assert leaves(payload(fake.calls_to("edit_config")[0]))["target-gain-tilt"] == "-0.46"
+    assert len(fake.calls_to("get_schema")) == 2
+
+
+def test_setpoint_digits_default_when_the_device_does_not_declare_them(managers):
+    device, fake = new(managers, setpoint_digits="device")
+    assert device.number_of_digits == ila_module.DEFAULT_DEVICE_DIGITS
+
+
+@pytest.mark.parametrize("amp,number", [("ab", 2), ("ba", 1)])
+def test_measured_evoa_numbering(managers, amp, number):
+    device, fake = new(managers, evoa_numbering="measured")
+    device.set_evoa_atten(amp, 4.0)
+    assert leaves(payload(fake.calls_to("edit_config")[0]))["evoa-id"] == str(number)
+
+
+@pytest.mark.parametrize("amp,number", [("ab", 2), ("ba", 1)])
+def test_output_evoa_is_the_measured_one_whatever_the_numbering(managers, amp, number):
+    device, fake = new(managers)
+    fake.replies["get_config"] = Reply(evoa(number, "5.0"))
+    device.set_output_evoa_atten(amp, 5.0)
+    assert device.get_output_evoa_atten(amp) == "5.0"
+    assert leaves(payload(fake.calls_to("edit_config")[0]))["evoa-id"] == str(number)
+    assert leaves(payload(fake.calls_to("get_config")[0], "filter"))["evoa-id"] == str(number)
+    assert device.evoa_map == ila_module.EVOA_LEGACY
+
+
+# ------------------------------------------------------------------------------------------------- new methods
+def test_set_target_gain_tilt(managers):
+    device, fake = new(managers)
+    device.set_target_gain_tilt("ba", -1.0)
+    sent = leaves(payload(fake.calls_to("edit_config")[0]))
+    assert (sent["name"], sent["target-gain-tilt"]) == ("ba", "-1.0")
+
+
+@pytest.mark.parametrize("given", ["high_gain_range", "oc-opt-amp:HIGH_GAIN_RANGE"])
+def test_set_gain_range_declares_the_identity_prefix(managers, given):
+    device, fake = new(managers)
+    device.set_gain_range("ab", given)
+    text = payload(fake.calls_to("edit_config")[0])
+    assert 'xmlns:oc-opt-amp="http://openconfig.net/yang/optical-amplfier"' in text
+    assert leaves(text)["gain-range"] == "oc-opt-amp:HIGH_GAIN_RANGE"
+
+
+@pytest.mark.parametrize("method,leaf,value", [("get_target_gain_tilt", "target-gain-tilt", "-0.50"),
+                                               ("get_gain_range", "gain-range", "oc-opt-amp:LOW_GAIN_RANGE")])
+def test_config_readers(managers, method, leaf, value):
+    device, fake = new(managers)
+    fake.replies["get_config"] = Reply(amplifier("ab", "config", leaf, value))
+    assert getattr(device, method)("ab") == value
+    assert fake.calls_to("get_config")[0].kwargs["source"] == "running"
+
+
+@pytest.mark.parametrize("method,leaf", [("get_actual_gain", "actual-gain"),
+                                         ("get_actual_gain_tilt", "actual-gain-tilt"),
+                                         ("get_input_power", "input-power-total"),
+                                         ("get_output_power", "output-power-total")])
+def test_state_readers_are_floats_from_the_operational_state(managers, method, leaf):
+    device, fake = new(managers)
+    fake.replies["get"] = Reply(amplifier("ba", "state", leaf, "-12.25"))
+    assert getattr(device, method)("ba") == -12.25
+    sent = leaves(payload(fake.calls_to("get")[0], "filter"))
+    assert sent["name"] == "ba" and leaf in sent
+
+
+def test_op_ranges_are_documented():
+    assert ila_module.OP_RANGES["low"]["max_gain"] == 20.0
+    assert ila_module.OP_RANGES["high"]["min_gain"] == 17.0
