@@ -1,6 +1,20 @@
 # tcdona3
 Codebase for Open Ireland Optical Testbed v3
 
+## Dependencies
+
+What the maintained drivers need, besides the Python 3.6 standard library:
+
+| Driver | Packages |
+|---|---|
+| `Lumentum`, `ILA` | `ncclient`, `lxml`, `xmltodict`, `paramiko` 3.x |
+| `TeraflexSSH` | `paramiko` 3.x |
+| `YokogawaOSA` | `pyvisa` and a VISA backend (`pyvisa-py` when NI-VISA is not installed), `numpy`, `matplotlib` |
+| booking check (`utils.check_patch_owners`) | `mysql-connector-python` |
+
+paramiko 5.x does not connect to the Juniper ILAs (it no longer accepts their SSH host key type); 3.x
+(tested with 3.4.1) does. On Python 3.6, pip picks versions that support it.
+
 ## Testing
 
 The maintained drivers (Lumentum, ILA, YokogawaOSA, TeraflexSSH) have a test suite in

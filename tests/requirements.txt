@@ -1,4 +1,5 @@
 # Test-only dependencies (the drivers' own dependencies must also be installed: ncclient, xmltodict,
-# lxml, pyvisa, paramiko, numpy, pandas, matplotlib). On Python 3.6 pip picks pytest 7.0.x.
+# lxml, pyvisa, paramiko, numpy, pandas, matplotlib; see the README). On Python 3.6 pip picks pytest 7.0.x.
+# The hardware scripts also need a VISA backend (pyvisa-py) and mysql-connector-python, and paramiko 3.x.
 pytest>=6.2
 vermin>=1.5
