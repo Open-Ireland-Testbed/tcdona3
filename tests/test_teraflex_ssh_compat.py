@@ -130,25 +130,21 @@ def test_return_current_config_on_another_line_port(ssh):
     assert sent_commands(ssh)[1] == "show interface 1/1/n2/ot400 otsia otsi 1 pm current"
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: the SNR pattern also matches the OSNR row")
 def test_snr_is_not_read_from_the_osnr_row(ssh):
     tf = new(ssh, **outputs(data.pm_otsi(osnr_first=True)))
     assert tf.return_current_config()["snr"] == "18.20"
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: a 15-min value listed before the live one wins")
 def test_the_live_value_wins_over_an_earlier_interval(ssh):
     tf = new(ssh, **outputs(data.pm_otsi(stale_first=True)))
     assert tf.return_current_config()["q_factor"] == "9.40"
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: a negative quality value is not read")
 def test_a_negative_snr_is_read(ssh):
     tf = new(ssh, **outputs(data.pm_otsi(snr="-1.50")))
     assert tf.return_current_config()["snr"] == "-1.50"
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: the FEC layer is otuc4-p whatever the logical interface")
 def test_the_fec_layer_follows_the_logical_interface(ssh):
     tf = new(ssh, **outputs(otuc_layer="otuc2-p"))
     result = tf.return_current_config("ot200")
