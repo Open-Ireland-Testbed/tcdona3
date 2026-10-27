@@ -99,7 +99,6 @@ def test_set_wavelength_span_writes_the_span_in_nm(osa):
     assert resource.writes[0].startswith(":SENSE:WAVELENGTH:SPAN ") and _number_nm(resource.writes[0]) == 10.0
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: the span is written with one decimal")
 def test_set_wavelength_span_keeps_its_decimals(osa):
     device, resource = osa
     device.set_wavelength_span(0.25)
@@ -142,7 +141,6 @@ def test_wait_for_sweep_complete_starts_a_sweep_and_polls(osa):
     assert resource.queries == [":stat:oper:even?"] * 3
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: the sweep is taken as complete when the register starts with 1")
 def test_wait_for_sweep_complete_reads_bit_zero(osa):
     device, resource = osa
     answers = iter(["16", "0", "1"])
