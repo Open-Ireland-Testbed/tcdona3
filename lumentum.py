@@ -1,3 +1,4 @@
+import os
 import re
 import time
 
@@ -10,6 +11,7 @@ import pprint
 
 pp = pprint.PrettyPrinter(depth=10)
 
+#: Login of the ROADMs; the LUMENTUM_USERNAME and LUMENTUM_PASSWORD environment variables override them.
 LUMENTUM_USERNAME = "superuser"
 LUMENTUM_PASSWORD = "Sup%9User"
 LUMENTUM_DEFAULT_WSS_LOSS = "4.0"
@@ -102,8 +104,8 @@ class Lumentum(object):
         connect_options = dict(
             host=ip_map[roadm_name],
             port=830,
-            username=LUMENTUM_USERNAME,
-            password=LUMENTUM_PASSWORD,
+            username=os.getenv("LUMENTUM_USERNAME", LUMENTUM_USERNAME),
+            password=os.getenv("LUMENTUM_PASSWORD", LUMENTUM_PASSWORD),
             hostkey_verify=False,
         )
         if timeout is not None:

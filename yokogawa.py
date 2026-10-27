@@ -1,3 +1,4 @@
+import os
 import time
 import pyvisa
 import numpy as np
@@ -69,6 +70,12 @@ def _on_off(value):
     return "ON" if value else "OFF"
 
 
+#: Default login of the remote socket; the YOKOGAWA_USER and YOKOGAWA_PASSWORD environment variables override
+#: these defaults (a login passed to the constructor is used as it is).
+YOKOGAWA_USER = "anonymous"
+YOKOGAWA_PASSWORD = "aaa"
+
+
 class YokogawaOSA:
     """Yokogawa AQ6370E optical spectrum analyser over its remote socket (pyvisa).
 
@@ -85,18 +92,20 @@ class YokogawaOSA:
     :param port: The remote socket port.
     :param timeout_ms: Optional VISA timeout of every reply [ms] (default: pyvisa's, 2 s); a long trace may need
         more.
-    :param user: The remote-socket user of the login.
-    :param password: The remote-socket password of the login.
+    :param user: The remote-socket user of the login (default: ``YOKOGAWA_USER``, or the environment variable of
+        the same name).
+    :param password: The remote-socket password of the login (default: ``YOKOGAWA_PASSWORD``, or the environment
+        variable of the same name).
     """
 
-    def __init__(self, ip: str, port: int = 10001, timeout_ms=None, user="anonymous", password="aaa"):
+    def __init__(self, ip: str, port: int = 10001, timeout_ms=None, user=YOKOGAWA_USER, password=YOKOGAWA_PASSWORD):
         self.ip = ip
         self.port = port
         self.osa = None
         self.rm = pyvisa.ResourceManager()
         self.timeout_ms = timeout_ms
-        self._user = user
-        self._password = password
+        self._user = os.getenv("YOKOGAWA_USER", user) if user == YOKOGAWA_USER else user
+        self._password = os.getenv("YOKOGAWA_PASSWORD", password) if password == YOKOGAWA_PASSWORD else password
 
     def connect(self):
 

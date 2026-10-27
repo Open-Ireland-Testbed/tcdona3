@@ -238,3 +238,19 @@ def test_state_readers_are_floats_from_the_operational_state(managers, method, l
 def test_op_ranges_are_documented():
     assert ila_module.OP_RANGES["low"]["max_gain"] == 20.0
     assert ila_module.OP_RANGES["high"]["min_gain"] == 17.0
+
+
+def test_the_login_can_come_from_the_environment(managers, monkeypatch):
+    _, calls = managers
+    monkeypatch.setenv("ILA_USERNAME", "<user>")
+    monkeypatch.setenv("ILA_PASSWORD", "<password>")
+    new(managers)
+    assert (calls[-1]["username"], calls[-1]["password"]) == ("<user>", "<password>")
+
+
+def test_without_the_environment_the_login_is_the_default(managers, monkeypatch):
+    _, calls = managers
+    monkeypatch.delenv("ILA_USERNAME", raising=False)
+    monkeypatch.delenv("ILA_PASSWORD", raising=False)
+    new(managers)
+    assert (calls[-1]["username"], calls[-1]["password"]) == (ila_module.user, ila_module.password)

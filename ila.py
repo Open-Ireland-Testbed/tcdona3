@@ -1,5 +1,6 @@
 from ncclient import manager
 import contextlib
+import os
 import math
 import xmltodict
 from tcdona3.utils import *
@@ -11,6 +12,7 @@ from ncclient.xml_ import to_ele
 from argparse import ArgumentParser
 from ncclient.operations import RPCError
 
+#: Login of the ILAs; the ILA_USERNAME and ILA_PASSWORD environment variables override them.
 user = "fslyne"
 password = "password"
 
@@ -131,7 +133,8 @@ class ILA:
         if not check_patch_owners([(f"{device}_fwd", f"{device}_bck")]):
             raise Exception("You are not authorized to use this device")
         print("ILA Initialised...")
-        connect_options = dict(host=host, port=830, username=user, password=password, hostkey_verify=False)
+        connect_options = dict(host=host, port=830, username=os.getenv("ILA_USERNAME", user),
+                               password=os.getenv("ILA_PASSWORD", password), hostkey_verify=False)
         if timeout is not None:
             connect_options["timeout"] = timeout
         session = manager.connect(**connect_options)

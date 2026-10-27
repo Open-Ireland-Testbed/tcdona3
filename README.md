@@ -15,6 +15,14 @@ What the maintained drivers need, besides the Python 3.6 standard library:
 paramiko 5.x does not connect to the Juniper ILAs (it no longer accepts their SSH host key type); 3.x
 (tested with 3.4.1) does. On Python 3.6, pip picks versions that support it.
 
+## Credentials
+
+The logins of the ROADMs, the ILAs and the Yokogawa OSA can be given through environment variables instead of
+the defaults in the code: `LUMENTUM_USERNAME`/`LUMENTUM_PASSWORD`, `ILA_USERNAME`/`ILA_PASSWORD`,
+`YOKOGAWA_USER`/`YOKOGAWA_PASSWORD` (a Yokogawa login passed to the constructor is used as it is). The booking
+database already reads `DB_HOST`, `DB_USER`, `DB_PASSWORD` and `DB_NAME`. Without them, the defaults are used,
+as before.
+
 ## Testing
 
 The maintained drivers (Lumentum, ILA, YokogawaOSA, TeraflexSSH) have a test suite in

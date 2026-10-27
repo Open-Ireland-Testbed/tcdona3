@@ -152,3 +152,26 @@ def test_wait_for_sweep_complete_times_out(osa, monkeypatch):
     monkeypatch.setattr(yokogawa_module.time, "time", lambda: next(clock))
     with pytest.raises(TimeoutError):
         device.wait_for_sweep_complete(timeout_s=20)
+
+
+def test_the_default_login_can_come_from_the_environment(instrument, monkeypatch):
+    resource, _ = instrument
+    monkeypatch.setenv("YOKOGAWA_USER", "<env-user>")
+    monkeypatch.setenv("YOKOGAWA_PASSWORD", "<env-password>")
+    YokogawaOSA("192.0.2.1").connect()
+    assert resource.queries == ['open "<env-user>"', "<env-password>"]
+
+
+def test_an_explicit_login_wins_over_the_environment(instrument, monkeypatch):
+    resource, _ = instrument
+    monkeypatch.setenv("YOKOGAWA_USER", "<env-user>")
+    YokogawaOSA("192.0.2.1", user="<user>", password="<password>").connect()
+    assert resource.queries == ['open "<user>"', "<password>"]
+
+
+def test_without_the_environment_the_login_is_the_default(instrument, monkeypatch):
+    resource, _ = instrument
+    monkeypatch.delenv("YOKOGAWA_USER", raising=False)
+    monkeypatch.delenv("YOKOGAWA_PASSWORD", raising=False)
+    YokogawaOSA("192.0.2.1").connect()
+    assert resource.queries == ['open "anonymous"', yokogawa_module.YOKOGAWA_PASSWORD]

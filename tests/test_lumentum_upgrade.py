@@ -241,3 +241,20 @@ def test_get_frequency_in_hz(roadm):
     fake.replies["get"] = Reply(data.monitored_channels(data.monitored(6201, 1, "-20.5", "191350.0"),
                                                         data.monitored(6201, 2, "-20.5", "191400.0")))
     assert device.get_frequency() == [191350.0e9, 191400.0e9]
+
+
+def test_the_login_can_come_from_the_environment(managers, monkeypatch):
+    _, calls = managers
+    monkeypatch.setenv("LUMENTUM_USERNAME", "<user>")
+    monkeypatch.setenv("LUMENTUM_PASSWORD", "<password>")
+    Lumentum("roadm_1")
+    assert (calls[-1]["username"], calls[-1]["password"]) == ("<user>", "<password>")
+
+
+def test_without_the_environment_the_login_is_the_default(managers, monkeypatch):
+    _, calls = managers
+    monkeypatch.delenv("LUMENTUM_USERNAME", raising=False)
+    monkeypatch.delenv("LUMENTUM_PASSWORD", raising=False)
+    Lumentum("roadm_1")
+    assert (calls[-1]["username"], calls[-1]["password"]) == (lumentum_module.LUMENTUM_USERNAME,
+                                                              lumentum_module.LUMENTUM_PASSWORD)
