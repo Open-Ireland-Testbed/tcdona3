@@ -123,3 +123,25 @@ def test_get_pm_of_one_layer(shell):
     tables = tf.get_pm("otuc", "ot200")
     assert [t["interval"] for t in tables] == ["live", "15min"]
     assert " ".join(shell["shell"].sent[-1].split()) == "show interface 1/1/n1/ot200 otuc2-p pm current"
+
+
+def test_get_current_config_falls_back_to_the_port_views(shell):
+    """A TeraFlex CLI without ``show running-config`` answers it with an error: the port views come instead."""
+    shell["make"] = lambda: FakeShell(data.device({
+        "running-config": "Error(400): Wrong command syntax. Unknown token(s): 'running-config'.\n",
+        "optical-channel-configuration": "frequency 193.1\n", "otsi 1": "otsi view\n",
+        "opt-phy": "opt-phy view\n", "ot400": "logical view\n", "1/1/n1": "port view\n"}))
+    tf = TeraflexSSH("tf_1", "<user>", "<password>", timeout=2)
+    config = tf.get_current_config()
+    assert "Error(" not in config
+    assert config.splitlines() == [
+        "show interface 1/1/n1", "port view", "show interface 1/1/n1 opt-phy", "opt-phy view",
+        "show interface 1/1/n1/ot400", "logical view", "show interface 1/1/n1/ot400 otsia otsi 1", "otsi view",
+        "show interface 1/1/n1/ot400 otsia otsi 1 optical-channel-configuration", "frequency 193.1"]
+
+
+def test_get_current_config_follows_the_logical_interface(shell):
+    shell["make"] = lambda: FakeShell(data.device({"running-config": "Error(400): unknown\n"}))
+    tf = TeraflexSSH("tf_2", "<user>", "<password>", timeout=2)
+    tf.get_current_config("ot200")
+    assert "show interface 1/1/n2/ot200 otsia otsi 1" in [" ".join(t.split()) for t in shell["shell"].sent]

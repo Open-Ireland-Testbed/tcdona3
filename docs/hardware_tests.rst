@@ -32,7 +32,7 @@ Each script saves the configuration first and compares it at the end; it fails w
      - How it puts it back
    * - ``smoke_teraflex.py``
      - Nothing: the driver only reads. The line port must carry a live signal.
-     - Compares the ``show interface`` views of the port before and after.
+     - Compares ``get_current_config()`` (the ``show interface`` views of the port) before and after.
    * - ``smoke_yokogawa.py``
      - Wavelength range, resolution, sensitivity, sampling, offsets, display, trace attribute, sweep mode; the
        sweeps overwrite the traces.

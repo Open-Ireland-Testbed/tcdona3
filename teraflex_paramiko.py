@@ -1,7 +1,7 @@
 import paramiko
 import time
 import re
-from typing import Dict, Any
+from typing import Any, Dict, List
 
 PROMPT_PATTERN = r"[>#]\s*$"
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -258,9 +258,26 @@ class TeraflexSSH:
                                                                 hit["interval"], flag)
         return snapshot
 
-    def get_current_config(self) -> str:
+    def port_config_commands(self, logical: str = "ot400") -> List[str]:
+        """The ``show interface`` views that hold the configuration of this line port: the port, its optical
+        layer, its logical interface, its OTSi and the OTSi's optical channel."""
+        full_if = f"{self.line_port}/{logical}"
+        return [f"show interface {self.line_port}", f"show interface {self.line_port} opt-phy",
+                f"show interface {full_if}", f"show interface {full_if} otsia otsi 1",
+                f"show interface {full_if} otsia otsi 1 optical-channel-configuration"]
+
+    def get_current_config(self, logical: str = "ot400") -> str:
+        """The running configuration (``show running-config``), without the echo of the command and the prompt.
+
+        A TeraFlex CLI that does not know ``show running-config`` answers it with an error; then the result is
+        the configuration of this line port instead: each view of :meth:`port_config_commands`, after the
+        command that produced it.
+        """
         raw = self._send("show running-config")
-        return self._clean_output(raw)
+        if "Error(" not in raw:
+            return self._clean_output(raw)
+        return "\n".join("%s\n%s" % (command, self._clean_output(self._send(command)))
+                         for command in self.port_config_commands(logical))
 
     def read_pm_data(self) -> Dict[str, Any]:
         print(f"show interface {self.line_port} opt-phy pm current ...")

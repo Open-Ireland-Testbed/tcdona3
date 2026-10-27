@@ -9,9 +9,9 @@ Usage (from the parent directory of the tcdona3 package)::
 the address of ``DEVICE_MAP``). The line port must carry a live signal, so that SNR, OSNR and Q-factor are
 reported.
 
-The driver only reads: the script saves the configuration of the line port first (the ``show interface``
-views of the port, its logical interface and its OTSi; this CLI has no ``show running-config``), compares
-it with the one at the end and exits with an error when they differ. Measured values are printed only with ``--show-values``.
+The driver only reads: the script saves the configuration first (:meth:`TeraflexSSH.get_current_config`: on
+this CLI, without ``show running-config``, the ``show interface`` views of the line port), compares it with
+the one at the end and exits with an error when they differ. Measured values are printed only with ``--show-values``.
 """
 
 import argparse
@@ -53,28 +53,15 @@ def as_float(text):
 
 
 def port_configuration(device, logical):
-    """The configuration views of the line port, by command (lines stripped, empty lines dropped)."""
-    port = "%s/%s" % (device.line_port, logical)
-    commands = ["show interface %s" % device.line_port, "show interface %s opt-phy" % device.line_port,
-                "show interface %s" % port, "show interface %s otsia otsi 1" % port,
-                "show interface %s otsia otsi 1 optical-channel-configuration" % port]
-    views = {}
-    for command in commands:
-        lines = [line.rstrip() for line in device._send(command).replace("\r", "").splitlines() if line.strip()]
-        views[command] = lines[1:-1]  # without the echo of the command and the prompt
-    return views
-
-
-def differing_lines(before, after):
-    return sum(len(set(before[command]) ^ set(after.get(command, []))) for command in before)
+    """The configuration as :meth:`TeraflexSSH.get_current_config` returns it, as a set of stripped lines."""
+    return {line.rstrip() for line in device.get_current_config(logical).splitlines() if line.strip()}
 
 
 def run(device, logical, checks):
     started = time.time()
     initial = port_configuration(device, logical)
-    checks.check("port configuration read before the test",
-                 all(lines and not any("Error(" in line for line in lines) for lines in initial.values()),
-                 "%d lines" % sum(len(lines) for lines in initial.values()))
+    checks.check("get_current_config: the configuration, without a CLI error",
+                 bool(initial) and not any("Error(" in line for line in initial), "%d lines" % len(initial))
 
     commands = device.pm_commands(logical)
     checks.check("pm_commands has the three layers", sorted(commands) == ["opt-phy", "otsi", "otuc"])
@@ -122,11 +109,7 @@ def run(device, logical, checks):
     checks.check("read_pm_data reads rx and tx power",
                  is_number(pm["rx_power"]) and is_number(pm["tx_power"]), (pm["rx_power"], pm["tx_power"]))
 
-    # kept for backward compatibility; this CLI answers it with a syntax error, so it is only reported
-    current = device.get_current_config()
-    print("[info] get_current_config: %s" % ("not supported by this CLI" if "Error(" in current else "read"))
-
-    changed = differing_lines(initial, port_configuration(device, logical))
+    changed = len(initial ^ port_configuration(device, logical))
     checks.check("port configuration unchanged at the end", changed == 0, "%d lines differ" % changed)
     print("duration: %.1f s" % (time.time() - started))
     return changed == 0
