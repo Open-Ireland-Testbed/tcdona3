@@ -17,7 +17,7 @@ SHARED_EXPORTS = {
     "ILA": ("tcdona3.ila", "ILA"),
 }
 
-#: Names ``tcdona3/__init__.py`` has always tried to export but that no module defines.
+#: Names ``tcdona3/__init__.py`` always tried to export (no module defines them): aliases of these classes.
 INTENDED_EXPORTS = {
     "Yokogawa": ("tcdona3.yokogawa", "YokogawaOSA"),
     "TeraFlex": ("tcdona3.teraflex", "TFlex"),
@@ -43,16 +43,25 @@ def test_every_name_in_all_exists():
     assert all(hasattr(tcdona3, name) for name in tcdona3.__all__)
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: polatis_old exports Polatis a second time, over the new one")
-def test_every_name_in_all_is_exported_once_and_polatis_is_the_netconf_one():
+def test_every_name_in_all_is_listed_once():
     assert len(tcdona3.__all__) == len(set(tcdona3.__all__))
+
+
+@pytest.mark.xfail(strict=True, reason="out of scope, to decide: polatis_old's Polatis overrides the NETCONF one, "
+                                       "which users of tcdona3.Polatis get today")
+def test_polatis_is_the_netconf_one():
     assert tcdona3.Polatis is _class("tcdona3.polatis", "Polatis")
 
 
-@pytest.mark.xfail(strict=True, reason="known bug: __init__ asks for class names the modules do not define")
 @pytest.mark.parametrize("name", sorted(INTENDED_EXPORTS))
 def test_intended_exports_exist(name):
     assert getattr(tcdona3, name) is _class(*INTENDED_EXPORTS[name])
+    assert name in tcdona3.__all__
+
+
+@pytest.mark.parametrize("module,name", sorted(INTENDED_EXPORTS.values()))
+def test_the_class_names_are_exported_too(module, name):
+    assert getattr(tcdona3, name) is _class(module, name)
 
 
 def test_the_original_class_names_stay_importable():
