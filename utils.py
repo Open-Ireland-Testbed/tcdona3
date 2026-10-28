@@ -48,15 +48,34 @@ def check_patch_owners(patch_list):
     """
     Check if all devices in the patch list are either unbooked or booked by the current user.
     Allows shared bookings (device booked by multiple users including current user).
-    
+    Supports username aliasing without changing DB records:
+    - TCDONA3_BOOKING_USER: single override username
+    - TCDONA3_BOOKING_ALIASES: comma-separated extra usernames
+
     :param patch_list: A list of patches, where each patch is a tuple/list of device names.
     :type patch_list: list
 
     :return: True if all devices are unbooked or booked by current user, False otherwise.
     :rtype: bool
     """
+    allowed_users = set()
+
     unix_user = os.getenv("SUDO_USER") or os.getenv("USER")
-    if not unix_user:
+    if unix_user:
+        allowed_users.add(unix_user.strip())
+
+    booking_user = os.getenv("TCDONA3_BOOKING_USER", "").strip()
+    if booking_user:
+        allowed_users.add(booking_user)
+
+    booking_aliases = os.getenv("TCDONA3_BOOKING_ALIASES", "")
+    for alias in booking_aliases.split(","):
+        alias = alias.strip()
+        if alias:
+            allowed_users.add(alias)
+
+    allowed_users = sorted(user for user in allowed_users if user)
+    if not allowed_users:
         print("No valid user found in environment.")
         return False
 
@@ -77,10 +96,11 @@ def check_patch_owners(patch_list):
 
     try:
         placeholders = ",".join(["%s"] * len(all_devices))
+        allowed_user_placeholders = ",".join(["%s"] * len(allowed_users))
 
         # Devices returned by this query are TRUE conflicts:
         # - they have at least one non-null/non-empty booking, AND
-        # - none of those bookings belong to the current user.
+        # - none of those bookings belong to allowed booking usernames.
         query = f"""
             SELECT
                 device_name,
@@ -89,12 +109,19 @@ def check_patch_owners(patch_list):
             WHERE device_name IN ({placeholders})
               AND user_name IS NOT NULL AND user_name <> ''
             GROUP BY device_name
-            HAVING SUM(user_name = %s) = 0
+            HAVING SUM(LOWER(user_name) IN ({allowed_user_placeholders})) = 0
         """
-        cursor.execute(query, tuple(all_devices) + (unix_user,))
+        cursor.execute(
+            query,
+            tuple(all_devices) + tuple(user.lower() for user in allowed_users),
+        )
         conflicts = cursor.fetchall()
 
         if conflicts:
+            print(
+                "Allowed booking usernames for this session: "
+                + ", ".join(allowed_users)
+            )
             for device_name, owners_csv in conflicts:
                 print(f"Device {device_name} is owned by: {owners_csv}")
             return False
