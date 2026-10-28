@@ -9,7 +9,7 @@ Before running them
 -------------------
 
 * Book the device: the Lumentum, ILA and Yokogawa drivers refuse a device booked by someone else.
-* Install the drivers' dependencies (see the README). The ILA needs paramiko 3.x.
+* Install the drivers' dependencies (see the README). The ILA needs paramiko older than 5 (3.x or 4.x).
 * Run them from the directory that contains the ``tcdona3`` package.
 * Credentials are never in the scripts: the TeraFlex and Yokogawa scripts read them from a JSON file given as
   argument; the ILA and Lumentum scripts use the driver's.

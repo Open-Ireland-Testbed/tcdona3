@@ -7,13 +7,13 @@ What the maintained drivers need, besides the Python 3.6 standard library:
 
 | Driver | Packages |
 |---|---|
-| `Lumentum`, `ILA` | `ncclient`, `lxml`, `xmltodict`, `paramiko` 3.x |
-| `TeraflexSSH` | `paramiko` 3.x |
+| `Lumentum`, `ILA` | `ncclient`, `lxml`, `xmltodict`, `paramiko` < 5 |
+| `TeraflexSSH` | `paramiko` < 5 |
 | `YokogawaOSA` | `pyvisa` and a VISA backend (`pyvisa-py` when NI-VISA is not installed), `numpy`, `matplotlib` |
 | booking check (`utils.check_patch_owners`) | `mysql-connector-python` |
 
-paramiko 5.x does not connect to the Juniper ILAs (it no longer accepts their SSH host key type); 3.x
-(tested with 3.4.1) does. On Python 3.6, pip picks versions that support it.
+paramiko 5.x does not connect to the Juniper ILAs (it no longer accepts their SSH host key type, `ssh-rsa`);
+3.x (tested with 3.4.1) and 4.x (4.0.0, the version on ol4) do. On Python 3.6, pip picks versions that support it.
 
 ## Credentials
 
