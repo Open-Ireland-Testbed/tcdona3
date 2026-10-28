@@ -93,6 +93,70 @@ def test_reconnect_never_repeats_a_delete(managers):
     assert device.m.manager.names() == []
 
 
+def test_reconnect_never_repeats_disable_als(managers):
+    """A second disable-als would restart the suspension of the laser safety: after a drop it is not sent
+    again, and the method reports that it is not known to be applied."""
+    queue, _ = managers
+    first = FakeNetconfManager(fail_on={"dispatch": TransportError("session closed")})
+    queue.extend([first, FakeNetconfManager()])
+    device = Lumentum("roadm_1", reconnect=True)
+    assert device.disable_als(duration=10) is False
+    assert first.names() == ["dispatch"]
+    assert device.m.manager.names() == []
+
+
+def test_reconnect_repeats_a_wss_add_connection_after_a_drop(managers):
+    queue, _ = managers
+    first = FakeNetconfManager(fail_on={"dispatch": TransportError("session closed")})
+    second = FakeNetconfManager()
+    queue.extend([first, second])
+    device = Lumentum("roadm_1", reconnect=True)
+    device.set_demux_unblock(7)
+    assert second.names() == ["dispatch"]
+    assert leaves(payload(second.calls_to("dispatch")[0], "rpc"))["blocked"] == "false"
+
+
+_DISPATCHED = {
+    "add-connection": '<add-connection xmlns="http://www.lumentum.com/lumentum-ote-connection"><dn>x</dn>'
+                      '</add-connection>',
+    "delete-connection": '<delete-connection xmlns="http://www.lumentum.com/lumentum-ote-connection"><dn>x</dn>'
+                         '</delete-connection>',
+    "remove-all-connections": '<remove-all-connections xmlns="http://www.lumentum.com/lumentum-ote-connection">'
+                              '<dn>x</dn></remove-all-connections>',
+    "disable-als": '<disable-als xmlns="http://www.lumentum.com/lumentum-ote-edfa"><dn>x</dn>'
+                   '<timeout-period>10</timeout-period></disable-als>',
+    "unknown-rpc": '<restart xmlns="urn:example"/>',
+}
+
+
+@pytest.mark.parametrize("name,expected", [("add-connection", True), ("delete-connection", False),
+                                           ("remove-all-connections", False), ("disable-als", False),
+                                           ("unknown-rpc", False)])
+@pytest.mark.parametrize("form", ["text", "element", "keyword"])
+def test_which_dispatches_are_repeated_after_a_drop(name, expected, form):
+    from lxml import etree
+    body = _DISPATCHED[name]
+    if form == "text":
+        verdict = _netconf.repeatable("dispatch", ("\n   " + body,))
+    elif form == "element":
+        verdict = _netconf.repeatable("dispatch", (etree.fromstring(body),))
+    else:
+        verdict = _netconf.repeatable("dispatch", (), {"rpc_command": etree.fromstring(body)})
+    assert verdict is expected
+
+
+def test_which_edits_and_reads_are_repeated_after_a_drop():
+    set_value = '<config><edfas><edfa><config><target-gain>15</target-gain></config></edfa></edfas></config>'
+    delete = ('<config xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0"><connections>'
+              '<connection nc:operation="delete"><dn>x</dn></connection></connections></config>')
+    assert _netconf.repeatable("edit_config", (), {"config": set_value, "target": "running"}) is True
+    assert _netconf.repeatable("edit_config", (set_value,)) is True
+    assert _netconf.repeatable("edit_config", (), {"config": delete}) is False
+    assert _netconf.repeatable("edit_config", (), {"target": "running"}) is False
+    assert _netconf.repeatable("get", ()) is True
+    assert _netconf.repeatable("commit", ()) is False
+
+
 def test_close_and_context_manager(managers):
     queue, _ = managers
     fake = FakeNetconfManager()

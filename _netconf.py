@@ -6,9 +6,11 @@ when an operation fails because the session dropped, opens the session again and
 when repeating it is safe:
 
 - reads (``get``, ``get_config``, ``get_schema``) always;
-- writes that set a value (``edit_config``, a ``dispatch`` that adds or modifies);
-- a ``dispatch`` that deletes is never repeated: the session is re-established and :class:`SessionDropped`
-  tells the caller to read the device back.
+- writes that set a value: an ``edit_config`` that deletes or removes nothing, and a ``dispatch`` of an RPC
+  of :data:`REPEATABLE_DISPATCHES` (the Lumentum WSS ``add-connection``, which creates or modifies);
+- any other ``dispatch`` (a delete, ``disable-als`` whose timer a second send would restart, an RPC this
+  module does not know) is never repeated: the session is re-established and :class:`SessionDropped` tells
+  the caller to read the device back.
 
 A read whose reply does not come in time is sent again on the same session; a write that timed out is never
 repeated (it may have been applied), unless the caller declares it idempotent with
@@ -28,6 +30,10 @@ READ_TIMEOUT_REPEATS = 2
 READ_TIMEOUT_WAIT_S = 5.0
 #: The operations always safe to repeat.
 READS = ("get", "get_config", "get_schema")
+#: The dispatched RPCs (local names) that leave the device as once when sent twice.
+REPEATABLE_DISPATCHES = ("add-connection",)
+#: The keyword of the payload of each operation, when it is not passed positionally.
+PAYLOAD_KEYWORDS = {"dispatch": "rpc_command", "edit_config": "config"}
 
 #: The texts of a dropped session when the error type does not tell it.
 DROP_TEXTS = ("not connected", "session closed", "socket is closed", "connection reset", "broken pipe",
@@ -70,23 +76,44 @@ def is_session_drop(error):
     return any(marker in text for marker in DROP_TEXTS)
 
 
-def repeatable(operation, args):
-    """Whether ``operation`` with ``args`` may be applied again after a drop."""
-    if operation in READS or operation == "edit_config":
+def _payload_text(operation, args, kwargs):
+    """The XML text of the payload of ``operation`` (positional or keyword), or None when unreadable."""
+    try:
+        body = args[0] if args else (kwargs or {}).get(PAYLOAD_KEYWORDS.get(operation, ""))
+        if body is None:
+            return None
+        if not isinstance(body, str):
+            from lxml import etree
+            body = etree.tostring(body).decode()
+        return body
+    except Exception:
+        return None
+
+
+def _rpc_name(body):
+    """The local name of the root element of an RPC payload, or None."""
+    try:
+        from lxml import etree
+        return etree.QName(etree.fromstring(body.strip().encode())).localname
+    except Exception:
+        return None
+
+
+def repeatable(operation, args, kwargs=None):
+    """Whether ``operation`` with ``args``/``kwargs`` may be applied again after a drop."""
+    if operation in READS:
         return True
-    if operation == "dispatch":
-        try:
-            body = args[0] if args else ""
-            if not isinstance(body, str):
-                from lxml import etree
-                body = etree.tostring(body).decode()
-        except Exception:  # an unreadable request is not repeated
-            return False
+    body = _payload_text(operation, args, kwargs)
+    if body is None:  # an unreadable request is not repeated
+        return False
+    if operation == "edit_config":
         return "delete" not in body.lower() and "remove" not in body.lower()
+    if operation == "dispatch":
+        return _rpc_name(body) in REPEATABLE_DISPATCHES
     return False
 
 
-def reads_only(operation, args):
+def reads_only(operation, args, kwargs=None):
     """Only the reads are repeated (a driver that repeats its write transactions whole)."""
     return operation in READS
 
@@ -182,7 +209,7 @@ class ReconnectingSession(object):
                     raise SessionDropped("%s: %s failed after the session was re-established %d times: %s"
                                          % (self._device, operation, self._attempts, error))
                 self._reconnect(operation, error)
-                if not self._repeatable(operation, args):
+                if not self._repeatable(operation, args, kwargs):
                     raise SessionDropped("%s: session dropped during %s; re-established, the operation is not "
                                          "repeated: read the device back" % (self._device, operation))
                 logger.info("%s: %s repeated on the new session", self._device, operation)
