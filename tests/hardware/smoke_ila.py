@@ -23,6 +23,7 @@ import contextlib
 import io
 import math
 import os
+import signal
 import sys
 import time
 
@@ -63,6 +64,23 @@ def quiet():
     """The driver prints a banner on connection: keep it out of the report."""
     with contextlib.redirect_stdout(io.StringIO()):
         yield
+
+@contextlib.contextmanager
+def interrupts_held():
+    """Ctrl-C is held while the device is put back: the restore runs to its end, then the run ends."""
+    received = []
+
+    def hold(signum, frame):
+        if not received:
+            print("[info] Ctrl-C: the device is being put back first")
+        received.append(signum)
+
+    previous = signal.signal(signal.SIGINT, hold)
+    try:
+        yield received
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
 
 
 def connect(device, **options):
@@ -219,9 +237,10 @@ def main():
             checks.check("the test ran to the end (interrupted)", False)
         except Exception as error:
             checks.check("the test ran to the end (%s: %s)" % (type(error).__name__, error), False)
-        different = restore(ila, saved)
-        checks.check("set-points put back", different == [], different)
-        checks.check("running configuration back to the initial one", running(ila) == initial)
+        with interrupts_held():
+            different = restore(ila, saved)
+            checks.check("set-points put back", different == [], different)
+            checks.check("running configuration back to the initial one", running(ila) == initial)
     print("duration: %.1f s" % (time.time() - started))
     print("%d checks failed%s" % (len(checks.failed), ": " + ", ".join(checks.failed) if checks.failed else ""))
     sys.exit(1 if checks.failed else 0)

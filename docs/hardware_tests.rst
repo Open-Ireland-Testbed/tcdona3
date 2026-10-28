@@ -22,8 +22,8 @@ How each script leaves the device
 ---------------------------------
 
 Each script saves the configuration first and compares it at the end; it fails when something is different.
-The configuration is put back also when a check fails or the run is interrupted with Ctrl-C (press it once,
-then let the script finish putting the device back).
+The configuration is put back also when a check fails or the run is interrupted with Ctrl-C; while the
+device is being put back, Ctrl-C is held until it is done.
 
 .. list-table::
    :header-rows: 1
@@ -38,7 +38,8 @@ then let the script finish putting the device back).
    * - ``smoke_yokogawa.py``
      - Wavelength range, resolution, sensitivity, sampling, offsets, display, trace attribute, sweep mode; the
        sweeps overwrite the traces.
-     - Writes the 27 saved settings back; a repeat or auto sweep running at the start is started again.
+     - Writes the 27 saved settings back. A sweep running at the start is left stopped: an ``[info]`` line
+       says so when the instrument was in repeat or auto mode.
    * - ``smoke_ila.py``
      - Gain, tilt and both EVOAs of each direction, moved by 0.5 dB for a few seconds. The amplifier is never
        disabled and its gain range never switched.

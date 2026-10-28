@@ -10,7 +10,7 @@ driver's defaults otherwise). The connection goes through the booking check of :
 The script saves the settings of the instrument (:data:`SETTINGS`) first, exercises the getters, the setters,
 the sweeps and the trace readers, and at the end, also when a check fails or the run is interrupted (Ctrl-C), puts every setting back: with the
 driver's setters, then by writing the saved answer for what is still different. It exits with an error when a
-setting could not be put back; a repeat or auto sweep is started again. The traces of the instrument are overwritten by the sweeps. Not exercised: the
+setting could not be put back; a sweep running at the start is left stopped (an ``[info]`` line says so). The traces of the instrument are overwritten by the sweeps. Not exercised: the
 ``store_*`` methods (they write files on the instrument), ``set_peak_search`` (it moves the marker, which this
 model does not let one read back), ``set_attenuator`` and ``set_sweep_points`` (their nodes are not queryable
 on this model). The average count and the FIX trace attribute are only reported: the AQ6370E ignores the
@@ -23,6 +23,7 @@ import io
 import json
 import math
 import os
+import signal
 import sys
 import tempfile
 import time
@@ -75,6 +76,23 @@ def quiet():
     """The driver prints its replies (the login, the identity): keep them out of the report."""
     with contextlib.redirect_stdout(io.StringIO()):
         yield
+
+@contextlib.contextmanager
+def interrupts_held():
+    """Ctrl-C is held while the device is put back: the restore runs to its end, then the run ends."""
+    received = []
+
+    def hold(signum, frame):
+        if not received:
+            print("[info] Ctrl-C: the device is being put back first")
+        received.append(signum)
+
+    previous = signal.signal(signal.SIGINT, hold)
+    try:
+        yield received
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
 
 
 def errors(osa):
@@ -139,11 +157,12 @@ def restore(osa, saved):
         if current[query] != saved[query]:
             osa.osa.write("%s %s" % (query[:-1], saved[query]))
     current = read_settings(osa)
-    if SWEEP_MODE_RESPONSE.get(str(saved[":INITiate:SMODe?"]).strip().upper()) in ("repeat", "auto"):
-        # the mode alone does not start a sweep: a repeat or auto sweep that ran at the start runs again
-        print("[info] the instrument was in %s sweep mode: sweep restarted"
-              % SWEEP_MODE_RESPONSE[str(saved[":INITiate:SMODe?"]).strip().upper()])
-        osa.osa.write(":INITiate")
+    mode = SWEEP_MODE_RESPONSE.get(str(saved[":INITiate:SMODe?"]).strip().upper())
+    if mode in ("repeat", "auto"):
+        # the mode is put back, but whether a sweep was running at the start is not known: the test leaves the
+        # sweep stopped and says so (starting one could overwrite a trace someone froze)
+        print("[info] the instrument was in %s sweep mode at the start; the sweep is left stopped: start it "
+              "again (:INITiate) if it was running" % mode)
     return [query for query in SETTINGS if current[query] != saved[query]]
 
 
@@ -341,10 +360,11 @@ def main():
                 checks.check("the test ran to the end (interrupted)", False)
             except Exception as error:
                 checks.check("the test ran to the end (%s: %s)" % (type(error).__name__, error), False)
-        different = restore(osa, saved)
-        checks.check("settings put back at the end", different == [], different)
-        if different:
-            print("Not put back: %s" % ", ".join(different))
+        with interrupts_held():
+            different = restore(osa, saved)
+            checks.check("settings put back at the end", different == [], different)
+            if different:
+                print("Not put back: %s" % ", ".join(different))
     finally:
         with quiet():
             osa.close()
