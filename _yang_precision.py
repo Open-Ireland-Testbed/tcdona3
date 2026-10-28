@@ -11,9 +11,13 @@ import re
 logger = logging.getLogger("tcdona3.yang")
 
 
-def _leaf_body(text, leaf):
-    """The statements of ``leaf <name> { ... }``, braces balanced; names may be quoted."""
-    match = re.search(r'leaf\s+"?%s"?\s*\{' % re.escape(leaf), text)
+#: How many typedefs an alias chain may go through (``typedef a { type b; }``) before giving up.
+MAX_TYPEDEF_DEPTH = 8
+
+
+def _statement_body(text, keyword, name):
+    """The statements of ``<keyword> <name> { ... }``, braces balanced; names may be quoted."""
+    match = re.search(r'\b%s\s+"?%s"?\s*\{' % (keyword, re.escape(name)), text)
     if match is None:
         return None
     depth, index = 1, match.end()
@@ -23,19 +27,38 @@ def _leaf_body(text, leaf):
     return text[match.end():index]
 
 
+def _leaf_body(text, leaf):
+    """The statements of ``leaf <name> { ... }``, braces balanced; names may be quoted."""
+    return _statement_body(text, "leaf", leaf)
+
+
 def _fraction_digits(body):
     match = re.search(r'fraction-digits\s+"?(\d+)', body)
     return int(match.group(1)) if match else None
 
 
-def _typedef_digits(texts, type_name):
-    name = re.escape(type_name.split(":")[-1])
+def _type_name(body):
+    match = re.search(r'\btype\s+"?([\w:\-]+)"?', body)
+    return match.group(1) if match else None
+
+
+def _typedef_digits(texts, type_name, depth=0):
+    """The ``fraction-digits`` of typedef ``type_name`` (any module prefix), read in its own body only and
+    following an alias chain to the typedef that declares them; None when not declared."""
+    name = type_name.split(":")[-1]
+    if depth > MAX_TYPEDEF_DEPTH:
+        return None
     for text in texts:
-        match = re.search(r'typedef\s+"?%s"?\s*\{' % name, text)
-        if match:
-            digits = _fraction_digits(text[match.end():match.end() + 600])
-            if digits is not None:
-                return digits
+        body = _statement_body(text, "typedef", name)
+        if body is None:
+            continue
+        digits = _fraction_digits(body)
+        if digits is not None:
+            return digits
+        alias = _type_name(body)
+        if alias and alias.split(":")[-1] != name:
+            return _typedef_digits(texts, alias, depth + 1)
+        return None
     return None
 
 
@@ -52,8 +75,8 @@ def declared_fraction_digits(schemas, module, leaves):
             return None
         digits = _fraction_digits(body)
         if digits is None:
-            type_match = re.search(r'type\s+"?([\w:\-]+)"?', body)
-            digits = _typedef_digits(schemas.values(), type_match.group(1)) if type_match else None
+            type_name = _type_name(body)
+            digits = _typedef_digits(list(schemas.values()), type_name) if type_name else None
         if digits is None:
             return None
         found.append(digits)

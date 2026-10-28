@@ -302,3 +302,23 @@ def test_without_the_environment_the_login_is_the_default(managers, monkeypatch)
     monkeypatch.delenv("ILA_PASSWORD", raising=False)
     new(managers)
     assert (calls[-1]["username"], calls[-1]["password"]) == (ila_module.user, ila_module.password)
+
+
+# ----------------------------------------------------------------------------- set-point decimals from YANG
+def test_yang_decimals_are_read_in_the_typedef_body_only():
+    """An alias typedef without fraction-digits must not borrow those of the next typedef in the text."""
+    from tcdona3._yang_precision import declared_fraction_digits
+    module = "module m { leaf target-gain { type t:gain-alias; } }"
+    types = ("module t { typedef gain-alias { type t:ieeefloat32-3; description \"an alias\"; } "
+             "typedef unrelated-1 { type decimal64 { fraction-digits 1; } } "
+             "typedef ieeefloat32-3 { type decimal64 { fraction-digits 3; } } }")
+    assert declared_fraction_digits({"m": module, "t": types}, "m", ("target-gain",)) == 3
+
+
+def test_yang_decimals_of_an_undeclared_or_looping_type_are_none():
+    from tcdona3._yang_precision import declared_fraction_digits
+    module = "module m { leaf target-gain { type t:a; } }"
+    looping = "module t { typedef a { type t:b; } typedef b { type t:a; } typedef c { type decimal64 { fraction-digits 1; } } }"
+    assert declared_fraction_digits({"m": module, "t": looping}, "m", ("target-gain",)) is None
+    plain = "module t { typedef a { type string; } typedef c { type decimal64 { fraction-digits 1; } } }"
+    assert declared_fraction_digits({"m": module, "t": plain}, "m", ("target-gain",)) is None
