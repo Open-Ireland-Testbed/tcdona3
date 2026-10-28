@@ -84,6 +84,21 @@ class Monitor:
                 json.dump(data_output, file_output, indent=4)
 
 
+#: The tcdona2 Polatis port table (ol02 only).
+TCDONA2_PORTS_CSV = "/etc/tcdona2/ports.csv"
+
+
+def _tcdona2_lumentum_ports(path=TCDONA2_PORTS_CSV):
+    """``(p1_mux, p1_demux, line_out, line_in)`` Polatis ports of Lumentum_5 from the tcdona2 table, or four
+    None when the table is missing or does not hold them."""
+    try:
+        ports = pd.read_csv(path, sep="\t", index_col="Name")
+        return (int(ports.at["Lumentum_5_p1", "Out"]), int(ports.at["Lumentum_5_p1", "In"]),
+                int(ports.at["Lumentum_5_line", "In"]), int(ports.at["Lumentum_5_line", "Out"]))
+    except (OSError, KeyError, ValueError, TypeError):
+        return None, None, None, None
+
+
 class RoadmMonitor(Monitor):
     def __init__(self, roadm_object):
         super().__init__(roadm_object)
@@ -95,10 +110,12 @@ class RoadmMonitor(Monitor):
         self.roadm_wss_channel_spacing = 50.0
         self.roadm_wss_channel_bw = 50.0
 
-        # The address of the monitored ROADM, recorded with each measurement. (The Polatis ports of the
-        # ROADM are not recorded: they came from the tcdona2 table /etc/tcdona2/ports.csv, which only exists
-        # on ol02 and always gave the ports of Lumentum_5, whatever ROADM was monitored.)
+        # The address of the monitored ROADM, recorded with each measurement.
         self.roadm_ip_address = LUMENTUM_IP_MAP.get(self.device_name)
+        # The Polatis ports of the ROADM, as tcdona3 always read them: from the tcdona2 table, which only
+        # exists on ol02 and holds the rows of Lumentum_5 whatever ROADM is monitored. None where the table
+        # is missing (ol4) or unreadable, instead of failing the constructor.
+        self.p1_mux_port, self.p1_demux_port, self.line_out_port, self.line_in_port = _tcdona2_lumentum_ports()
 
         # Loaded from Lumentum class
         self.roadm_wss_channel_attenuation_default = LUMENTUM_DEFAULT_WSS_LOSS
@@ -215,6 +232,10 @@ class RoadmMonitor(Monitor):
                     "repeat_index": repeat_index,
                     "device_name": self.device_name,
                     "ip_address": self.roadm_ip_address,
+                    "P1_MUX_port": self.p1_mux_port,
+                    "P1_DEMUX_port": self.p1_demux_port,
+                    "Line_Out_port": self.line_out_port,
+                    "Line_In_port": self.line_in_port,
                     "roadm_wss_channel_attenuation_default": self.roadm_wss_channel_attenuation_default,
                     "roadm_wss_num_channel": self.roadm_wss_num_channel,
                     "roadm_wss_channel_freq_center_start": self.roadm_wss_channel_freq_center_start,
