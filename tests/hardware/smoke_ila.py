@@ -10,7 +10,8 @@ of the driver.
 The script saves the running configuration and the set-points of both directions first, exercises the reads,
 the write transaction (each set-point moved by :data:`STEP_DB` and read back, the state and the gain range
 written with the value they hold, a rejected edit), the options (``setpoint_digits="device"``,
-``evoa_numbering="measured"``, ``reconnect=True``) and the validation, and at the end, also when a check fails,
+``evoa_numbering="measured"``, ``reconnect=True``) and the validation, and at the end, also when a check fails
+or the run is interrupted (Ctrl-C),
 writes every saved set-point back as the device returned it. It fails when the running configuration is not
 the initial one. The amplifier is never disabled and its gain range never switched, but the gain, tilt and
 EVOA moves change the power on the line for a few seconds. Measured values are printed only with
@@ -214,6 +215,8 @@ def main():
         saved = save(ila)
         try:
             exercise(ila, args.device, checks)
+        except KeyboardInterrupt:  # Ctrl-C: the set-points are still put back below
+            checks.check("the test ran to the end (interrupted)", False)
         except Exception as error:
             checks.check("the test ran to the end (%s: %s)" % (type(error).__name__, error), False)
         different = restore(ila, saved)

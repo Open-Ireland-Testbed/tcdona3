@@ -2,21 +2,23 @@
 
 Usage (from the parent directory of the tcdona3 package)::
 
-    python3 tcdona3/tests/hardware/smoke_lumentum.py <roadm> [--edfa-writes] [--show-values]
+    python3 tcdona3/tests/hardware/smoke_lumentum.py <roadm> [--edfa-writes] [--unblock] [--show-values]
 
 ``<roadm>`` is a name the driver knows; the connection goes through the booking check of the driver.
 
 The script saves the running configuration first and exercises the readers (WSS connections, OCM, ports,
 EDFAs, line port), the validation, the session options and the WSS writes on one *blocked* DEMUX connection,
-which carries no light: attenuation (also as parallel lists), block and unblock, output port, delete and add
-again (one by one and as a group). It also moves the output VOA of the line port by :data:`STEP_DB` (the line
+which passes no light: attenuation (also as parallel lists), block, output port, delete and add again (one by
+one and as a group). Unblocking it is exercised only with ``--unblock``: a blocked connection can still have
+light at its input, and unblocking it sends that light to its drop port for about a second, so use it only
+when the band of the connection is dark or its drop port is free. It also moves the output VOA of the line port by :data:`STEP_DB` (the line
 power changes for a few seconds) and writes the maintenance state and gain switch mode of each EDFA with the
 value they hold. With ``--edfa-writes`` it also runs the legacy EDFA setters with the values the EDFAs hold:
 each takes its EDFA out of service for about a second, interrupting the line. On a line that loops back to
 the ROADM the interruption can latch: with no light at the preamp, the automatic laser shutdown keeps the
 booster off, and the amplifiers along the line shut down too.
 
-At the end, also when a check fails, every element of the running configuration (connection, EDFA, port)
+At the end, also when a check fails or the run is interrupted (Ctrl-C), every element of the running configuration (connection, EDFA, port)
 that differs from the saved one is written back as saved, and when the preamp is not in the operational state
 it had at the start the automatic laser shutdown is suspended (:meth:`Lumentum.disable_als`) until the line
 is back. The script fails when the running configuration or the preamp state is not the initial one. Measured values are printed only with ``--show-values``.
@@ -168,7 +170,7 @@ def read(roadm, checks):
                  is_number(line["config"].get("outvoa-target-attenuation")))
 
 
-def write(roadm, device, checks, edfa_writes):
+def write(roadm, device, checks, edfa_writes, unblock=False):
     blocked = sorted(int(dn.split("connection=")[1]) for kind, dn in elements(running(roadm))
                      if kind == "connection" and ";module=%d;" % DEMUX in dn and
                      connection_config(roadm, dn)["blocked"] == "true")[:2]
@@ -191,9 +193,12 @@ def write(roadm, device, checks, edfa_writes):
                  all(math.isclose(float(connection_config(roadm, demux_dn(n))["attenuation"]), t, abs_tol=0.051)
                      for n, t in zip(blocked, targets)))
 
-    with quiet():
-        roadm.set_demux_unblock(first)
-    checks.check("set_demux_unblock", connection_config(roadm, demux_dn(first))["blocked"] == "false")
+    if unblock:
+        with quiet():
+            roadm.set_demux_unblock(first)
+        checks.check("set_demux_unblock", connection_config(roadm, demux_dn(first))["blocked"] == "false")
+    else:
+        print("[skip] set_demux_unblock: needs --unblock (the band of the connection may carry light)")
     with quiet():
         roadm.set_demux_block(first)
     checks.check("set_demux_block", connection_config(roadm, demux_dn(first))["blocked"] == "true")
@@ -329,6 +334,8 @@ def main():
     parser.add_argument("roadm", help="a ROADM name the driver knows")
     parser.add_argument("--edfa-writes", action="store_true",
                         help="also run the legacy EDFA setters (each interrupts the line for about a second)")
+    parser.add_argument("--unblock", action="store_true",
+                        help="also unblock the blocked test connection for a moment (its band may carry light)")
     parser.add_argument("--show-values", action="store_true")
     args = parser.parse_args()
 
@@ -343,7 +350,9 @@ def main():
                      "%d chars" % len(initial))
         try:
             read(roadm, checks)
-            write(roadm, args.roadm, checks, args.edfa_writes)
+            write(roadm, args.roadm, checks, args.edfa_writes, args.unblock)
+        except KeyboardInterrupt:  # Ctrl-C: the configuration and the line are still put back below
+            checks.check("the test ran to the end (interrupted)", False)
         except Exception as error:
             checks.check("the test ran to the end (%s: %s)" % (type(error).__name__, error), False)
         different = restore(roadm, initial)

@@ -22,6 +22,8 @@ How each script leaves the device
 ---------------------------------
 
 Each script saves the configuration first and compares it at the end; it fails when something is different.
+The configuration is put back also when a check fails or the run is interrupted with Ctrl-C (press it once,
+then let the script finish putting the device back).
 
 .. list-table::
    :header-rows: 1
@@ -36,14 +38,16 @@ Each script saves the configuration first and compares it at the end; it fails w
    * - ``smoke_yokogawa.py``
      - Wavelength range, resolution, sensitivity, sampling, offsets, display, trace attribute, sweep mode; the
        sweeps overwrite the traces.
-     - Writes the 27 saved settings back, also when a check fails.
+     - Writes the 27 saved settings back; a repeat or auto sweep running at the start is started again.
    * - ``smoke_ila.py``
      - Gain, tilt and both EVOAs of each direction, moved by 0.5 dB for a few seconds. The amplifier is never
        disabled and its gain range never switched.
      - Writes every saved set-point back as the device returned it; compares the whole running configuration.
    * - ``smoke_lumentum.py``
-     - WSS writes on blocked DEMUX connections only (no light); the line output VOA, moved by 0.5 dB. With
-       ``--edfa-writes``, the legacy EDFA setters.
+     - WSS writes on blocked DEMUX connections only (no light passes); the line output VOA, moved by 0.5 dB.
+       With ``--unblock``, one of them is unblocked for about a second: light at its input then reaches its
+       drop port, so use it only when its band is dark or its drop port is free. With ``--edfa-writes``, the
+       legacy EDFA setters.
      - Writes back every connection, EDFA and port that differs from the saved running configuration, and
        brings the line back (see below).
 
@@ -52,7 +56,7 @@ Usage::
     python3 tcdona3/tests/hardware/smoke_teraflex.py <credentials>.json --device tf_1
     python3 tcdona3/tests/hardware/smoke_yokogawa.py <credentials>.json
     python3 tcdona3/tests/hardware/smoke_ila.py <ila>
-    python3 tcdona3/tests/hardware/smoke_lumentum.py <roadm> [--edfa-writes]
+    python3 tcdona3/tests/hardware/smoke_lumentum.py <roadm> [--edfa-writes] [--unblock]
 
 ``--edfa-writes`` interrupts the line
 -------------------------------------

@@ -8,9 +8,9 @@ Usage (from the parent directory of the tcdona3 package)::
 driver's defaults otherwise). The connection goes through the booking check of :meth:`YokogawaOSA.connect`.
 
 The script saves the settings of the instrument (:data:`SETTINGS`) first, exercises the getters, the setters,
-the sweeps and the trace readers, and at the end, also when a check fails, puts every setting back: with the
+the sweeps and the trace readers, and at the end, also when a check fails or the run is interrupted (Ctrl-C), puts every setting back: with the
 driver's setters, then by writing the saved answer for what is still different. It exits with an error when a
-setting could not be put back. The traces of the instrument are overwritten by the sweeps. Not exercised: the
+setting could not be put back; a repeat or auto sweep is started again. The traces of the instrument are overwritten by the sweeps. Not exercised: the
 ``store_*`` methods (they write files on the instrument), ``set_peak_search`` (it moves the marker, which this
 model does not let one read back), ``set_attenuator`` and ``set_sweep_points`` (their nodes are not queryable
 on this model). The average count and the FIX trace attribute are only reported: the AQ6370E ignores the
@@ -29,7 +29,7 @@ import time
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
-from tcdona3.yokogawa import SENSITIVITY_RESPONSE, YokogawaOSA  # noqa: E402
+from tcdona3.yokogawa import SENSITIVITY_RESPONSE, SWEEP_MODE_RESPONSE, YokogawaOSA  # noqa: E402
 
 #: The settings the test may change, as queries; each is put back at the end.
 SETTINGS = (":SENSe:CORRection:RVELocity:MEDium?", ":SENSe:CORRection:WAVelength:SHIFt?",
@@ -139,6 +139,11 @@ def restore(osa, saved):
         if current[query] != saved[query]:
             osa.osa.write("%s %s" % (query[:-1], saved[query]))
     current = read_settings(osa)
+    if SWEEP_MODE_RESPONSE.get(str(saved[":INITiate:SMODe?"]).strip().upper()) in ("repeat", "auto"):
+        # the mode alone does not start a sweep: a repeat or auto sweep that ran at the start runs again
+        print("[info] the instrument was in %s sweep mode: sweep restarted"
+              % SWEEP_MODE_RESPONSE[str(saved[":INITiate:SMODe?"]).strip().upper()])
+        osa.osa.write(":INITiate")
     return [query for query in SETTINGS if current[query] != saved[query]]
 
 
@@ -332,6 +337,8 @@ def main():
         with tempfile.TemporaryDirectory() as workdir:
             try:
                 exercise(osa, checks, workdir)
+            except KeyboardInterrupt:  # Ctrl-C: the settings are still put back below
+                checks.check("the test ran to the end (interrupted)", False)
             except Exception as error:
                 checks.check("the test ran to the end (%s: %s)" % (type(error).__name__, error), False)
         different = restore(osa, saved)
