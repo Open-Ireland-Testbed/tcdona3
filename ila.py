@@ -174,7 +174,12 @@ class ILA:
 
         The candidate is locked, cleared of any change left by another session, edited and committed; on any
         failure the edit is discarded before the error propagates, and the lock is always released. With
-        ``reconnect=True``, a transaction interrupted by a dropped session is applied again once.
+        ``reconnect=True``, a transaction interrupted by a dropped session is applied again once, whole, on a
+        new session.
+
+        A transaction runs on one session from the lock to the unlock: it is never re-opened in the middle,
+        so the clean-up of an interrupted edit never reaches a new session that does not hold the lock (where
+        it could discard the staged edit of another client).
         """
         try:
             self._commit_edit_once(rpc)
@@ -182,19 +187,23 @@ class ILA:
             if not isinstance(self.m, ReconnectingSession) or not (
                     isinstance(error, SessionDropped) or is_session_drop(error)):
                 raise
-            if not isinstance(error, SessionDropped):
-                self.m.reopen()
+            self.m.reopen()
             self._commit_edit_once(rpc)
 
+    def _transaction_session(self):
+        """The ncclient manager a transaction runs on: the open one, not the reconnecting wrapper."""
+        return self.m.manager if isinstance(self.m, ReconnectingSession) else self.m
+
     def _commit_edit_once(self, rpc):
-        with self.m.locked("candidate"):
-            self.m.discard_changes()
+        m = self._transaction_session()
+        with m.locked("candidate"):
+            m.discard_changes()
             try:
-                self.m.edit_config(rpc, target="candidate")
-                self.m.commit()
+                m.edit_config(rpc, target="candidate")
+                m.commit()
             except BaseException:
                 try:
-                    self.m.discard_changes()
+                    m.discard_changes()
                 except Exception as error:
                     print("Discarding the failed edit also failed: %s" % error)
                 raise

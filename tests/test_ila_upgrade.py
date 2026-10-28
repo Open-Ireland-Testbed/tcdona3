@@ -1,12 +1,14 @@
 """The features ``ILA`` gained in 1.1.0: transactional writes, validation, options, new methods."""
 
+import contextlib
+
 import pytest
 
 import tcdona3.ila as ila_module
 from tcdona3 import _netconf
 from tcdona3.ila import ILA
 
-from fakes import FakeNetconfManager, Reply, leaves, payload
+from fakes import Call, FakeNetconfManager, Reply, leaves, payload
 
 OOD = 'xmlns="http://org/openroadm/device"'
 NC = 'xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"'
@@ -83,10 +85,56 @@ def test_reconnect_applies_an_interrupted_transaction_again(managers):
     device = ILA("ila_1", reconnect=True)
     assert isinstance(device.m, _netconf.ReconnectingSession)
     device.set_evoa_atten("ab", 3.0)
-    assert first.names()[:3] == ["lock", "discard_changes", "edit_config"] and first.names()[-1] == "unlock"
-    # the clean-up discard of the interrupted edit reaches the new session, then the whole transaction
-    assert second.names()[-len(TRANSACTION):] == TRANSACTION
-    assert len(second.calls_to("edit_config")) == 1 and len(second.calls_to("commit")) == 1
+    # the interrupted transaction is cleaned up on its own session; the new one gets the whole transaction
+    assert first.names() == ["lock", "discard_changes", "edit_config", "discard_changes", "unlock"]
+    assert second.names() == TRANSACTION
+    assert len(calls) == 2
+
+
+class _DiesOnEdit(FakeNetconfManager):
+    """A session that drops during the edit: every later operation on it, the unlock included, fails."""
+
+    def __init__(self):
+        super(_DiesOnEdit, self).__init__(fail_on={"edit_config": TransportError("session closed")})
+        self.dead = False
+
+    def _answer(self, name, args, kwargs):
+        if self.dead:
+            self.calls.append(Call(name + " (dead)", args, kwargs))
+            raise TransportError("Not connected to NETCONF server")
+        try:
+            return super(_DiesOnEdit, self)._answer(name, args, kwargs)
+        except TransportError:
+            self.dead = True
+            raise
+
+    @contextlib.contextmanager
+    def locked(self, target):
+        self._answer("lock", (target,), {})
+        try:
+            yield
+        finally:
+            self._answer("unlock", (target,), {})
+
+
+def test_a_drop_mid_transaction_never_sends_its_clean_up_on_the_new_session(managers):
+    queue, calls = managers
+    first, second = _DiesOnEdit(), FakeNetconfManager()
+    queue.extend([first, second])
+    device = ILA("ila_1", reconnect=True)
+    device.set_target_gain("ab", 15.0)
+    assert first.names() == ["lock", "discard_changes", "edit_config", "discard_changes (dead)", "unlock (dead)"]
+    assert second.names() == TRANSACTION
+    assert len(calls) == 2
+
+
+def test_a_drop_in_both_attempts_propagates(managers):
+    queue, calls = managers
+    queue.extend([_DiesOnEdit(), _DiesOnEdit()])
+    device = ILA("ila_1", reconnect=True)
+    with pytest.raises(Exception) as raised:
+        device.set_target_gain("ab", 15.0)
+    assert _netconf.is_session_drop(raised.value)
     assert len(calls) == 2
 
 
