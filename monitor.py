@@ -11,6 +11,7 @@ from tcdona3.lumentum import (
     LUMENTUM_DEFAULT_WSS_LOSS,
     LUMENTUM_CHANNEL_QUANTITY,
     LUMENTUM_WSS_CHANNEL_FREQ_CENTER_LIST,
+    ip_map as LUMENTUM_IP_MAP,
 )
 import xmltodict
 from tcdona3.polatis import Polatis
@@ -94,11 +95,10 @@ class RoadmMonitor(Monitor):
         self.roadm_wss_channel_spacing = 50.0
         self.roadm_wss_channel_bw = 50.0
 
-        ports = pd.read_csv("/etc/tcdona2/ports.csv", sep="\t", index_col="Name")
-        self.p1_mux_port = int(ports.at["Lumentum_5_p1", "Out"])
-        self.p1_demux_port = int(ports.at["Lumentum_5_p1", "In"])
-        self.line_out_port = int(ports.at["Lumentum_5_line", "In"])
-        self.line_in_port = int(ports.at["Lumentum_5_line", "Out"])
+        # The address of the monitored ROADM, recorded with each measurement. (The Polatis ports of the
+        # ROADM are not recorded: they came from the tcdona2 table /etc/tcdona2/ports.csv, which only exists
+        # on ol02 and always gave the ports of Lumentum_5, whatever ROADM was monitored.)
+        self.roadm_ip_address = LUMENTUM_IP_MAP.get(self.device_name)
 
         # Loaded from Lumentum class
         self.roadm_wss_channel_attenuation_default = LUMENTUM_DEFAULT_WSS_LOSS
@@ -215,10 +215,6 @@ class RoadmMonitor(Monitor):
                     "repeat_index": repeat_index,
                     "device_name": self.device_name,
                     "ip_address": self.roadm_ip_address,
-                    "P1_MUX_port": self.p1_mux_port,
-                    "P1_DEMUX_port": self.p1_demux_port,
-                    "Line_Out_port": self.line_out_port,
-                    "Line_In_port": self.line_in_port,
                     "roadm_wss_channel_attenuation_default": self.roadm_wss_channel_attenuation_default,
                     "roadm_wss_num_channel": self.roadm_wss_num_channel,
                     "roadm_wss_channel_freq_center_start": self.roadm_wss_channel_freq_center_start,
