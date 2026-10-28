@@ -54,6 +54,25 @@ def test_a_pager_is_answered_and_removed(shell):
     assert shell["shell"].sent[-1] == " "
 
 
+@pytest.mark.parametrize("chunk", [3, 5, 9])
+def test_a_pager_split_across_chunks_is_answered(shell, chunk):
+    class PagedShell(FakeShell):
+        def send(self, text):
+            self.sent.append(text)
+            if text == " ":
+                self.buffer += ("  opt-tx-pwr  nend  0.5 dBm\r\n\r\n" + data.PROMPT).encode()
+                return 1
+            head = data.PM_OPT_PHY.split("  opt-tx-pwr")[0].replace("\n", "\r\n")
+            self.buffer += (text.strip() + "\r\n" + head + "--More--").encode()
+            return len(text)
+
+    shell["make"] = lambda: PagedShell({}, chunk=chunk, banner="")
+    tf = TeraflexSSH("tf_1", "<user>", "<password>", timeout=2)
+    raw = tf._send("show interface 1/1/n1 opt-phy pm current")
+    assert "--More--" not in raw and "opt-tx-pwr" in raw
+    assert shell["shell"].sent.count(" ") == 1
+
+
 def test_a_channel_closed_by_the_device_ends_the_read(shell, monkeypatch):
     class ClosingShell(FakeShell):
         def send(self, text):

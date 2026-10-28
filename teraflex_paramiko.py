@@ -193,11 +193,11 @@ class TeraflexSSH:
                 data = self.channel.recv(65535)
                 if not data:
                     break
-                part = data.decode("utf-8", errors="ignore")
-                if _PAGER_RE.search(part):
+                buff += data.decode("utf-8", errors="ignore")
+                # looked for in the whole output: a pager prompt may arrive split across two chunks
+                if _PAGER_RE.search(buff):
                     self.channel.send(" ")
-                    part = _PAGER_RE.sub("", part)
-                buff += part
+                    buff = _PAGER_RE.sub("", buff)
                 lines = _ANSI_RE.sub("", buff).rstrip("\r\n").splitlines()
                 if lines and re.search(PROMPT_PATTERN, lines[-1]):
                     break
