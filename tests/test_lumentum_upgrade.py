@@ -236,6 +236,25 @@ def test_edfa_state_of_each_module(roadm):
     assert device.edfa_state(2)["voas"]["voa"]["voa-attentuation"] == "0.5"
 
 
+def test_edfa_state_picks_the_module_by_its_dn_not_its_position(roadm):
+    device, fake = roadm
+    booster, preamp = data.EDFAS.split("<edfa>")[1], data.EDFAS.split("<edfa>")[2]
+    reversed_reply = data.EDFAS.replace("<edfa>" + booster, "").replace(
+        "<edfa>" + preamp.split("</edfas>")[0], "<edfa>" + preamp.split("</edfas>")[0] + "<edfa>" + booster)
+    assert reversed_reply.index("edfa=2") < reversed_reply.index("edfa=1")
+    fake.replies["get"] = Reply(reversed_reply)
+    assert device.edfa_state(1)["input-power"] == "-5.0"
+    assert device.edfa_state(2)["input-power"] == "-20.0"
+
+
+def test_edfa_state_of_a_module_missing_from_the_reply_is_an_error(roadm):
+    device, fake = roadm
+    fake.replies["get"] = Reply(data.edfa_state_leaf(1, "input-power", "-5.0"))
+    assert device.edfa_state(1)["input-power"] == "-5.0"
+    with pytest.raises(RuntimeError):
+        device.edfa_state(2)
+
+
 def test_line_port_strips_prefixes(roadm):
     device, fake = roadm
     fake.replies["get"] = Reply(data.PORTS)

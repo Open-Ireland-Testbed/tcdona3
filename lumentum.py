@@ -919,14 +919,23 @@ class Lumentum(object):
         """The ``state`` subtree of one EDFA module (1 booster, 2 preamp) from a single ``get``: its powers,
         measured gain and internal leaves (VOAs, pumps), read at one instant.
 
+        The module is picked by its ``dn`` (``...;edfa=<module_id>``), whatever the order of the reply.
+
         :return: The parsed subtree (xmltodict; one VOA is a dict, several a list).
         :rtype: dict
+
+        :raises RuntimeError: When the reply holds no EDFA ``module_id``.
         """
         command = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa"
                   xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
         modules = xmltodict.parse(self.m.get(command).data_xml)["data"]["edfas"]["edfa"]
         modules = modules if isinstance(modules, list) else [modules]
-        return modules[int(module_id) - 1]["state"]
+        wanted = "edfa=%d" % int(module_id)
+        for module in modules:
+            module = _strip_prefixes(module)
+            if wanted in str(module.get("dn", "")).split(";"):
+                return module["state"]
+        raise RuntimeError("Lumentum EDFA %d is not in the reply" % int(module_id))
 
     def line_port(self):
         """The line port of the ROADM (physical port 3001): its ``state`` and ``config`` subtrees from a single
