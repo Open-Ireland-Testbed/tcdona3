@@ -15,16 +15,59 @@ logger = logging.getLogger("tcdona3.yang")
 MAX_TYPEDEF_DEPTH = 8
 
 
+def _code_positions(text, start=0):
+    """The positions of ``text`` from ``start`` that are YANG statements, not inside a quoted string or a
+    comment (RFC 7950 6.1: an unquoted ``//`` or ``/*`` always starts a comment)."""
+    index, length = start, len(text)
+    while index < length:
+        char = text[index]
+        if char == '"':  # a double-quoted string, with backslash escapes
+            index += 1
+            while index < length and text[index] != '"':
+                index += 2 if text[index] == "\\" else 1
+        elif char == "'":  # a single-quoted string, no escapes
+            index = text.find("'", index + 1)
+            index = length if index < 0 else index
+        elif text.startswith("//", index):
+            index = text.find("\n", index)
+            index = length if index < 0 else index
+        elif text.startswith("/*", index):
+            index = text.find("*/", index + 2)
+            index = length if index < 0 else index + 1
+        else:
+            yield index
+        index += 1
+
+
+def _body_end(text, start):
+    """The index just past the ``}`` closing the block opened before ``start``; braces inside quoted strings
+    and comments do not count."""
+    depth = 1
+    for index in _code_positions(text, start):
+        depth += {"{": 1, "}": -1}.get(text[index], 0)
+        if depth == 0:
+            return index + 1
+    return len(text)
+
+
+def _first_statement(text, pattern):
+    """The first match of ``pattern`` that starts in a statement, not inside a quoted string or a comment
+    (a description saying "type of amplifier" is not a ``type`` statement); arguments may be quoted."""
+    code = None
+    for match in re.finditer(pattern, text):
+        if code is None:
+            code = set(_code_positions(text))
+        if match.start() in code:
+            return match
+    return None
+
+
 def _statement_body(text, keyword, name):
     """The statements of ``<keyword> <name> { ... }``, braces balanced; names may be quoted."""
-    match = re.search(r'\b%s\s+"?%s"?\s*\{' % (keyword, re.escape(name)), text)
+    match = _first_statement(text, r'\b%s\s+"?%s"?\s*\{' % (keyword, re.escape(name)))
     if match is None:
         return None
-    depth, index = 1, match.end()
-    while depth and index < len(text):
-        depth += {"{": 1, "}": -1}.get(text[index], 0)
-        index += 1
-    return text[match.end():index]
+    return text[match.end():_body_end(text, match.end())]
 
 
 def _leaf_body(text, leaf):
@@ -33,22 +76,27 @@ def _leaf_body(text, leaf):
 
 
 def _fraction_digits(body):
-    match = re.search(r'fraction-digits\s+"?(\d+)', body)
+    match = _first_statement(body, r'\bfraction-digits\s+"?(\d+)')
     return int(match.group(1)) if match else None
 
 
 def _type_name(body):
-    match = re.search(r'\btype\s+"?([\w:\-]+)"?', body)
+    match = _first_statement(body, r'\btype\s+"?([\w:\-]+)"?')
     return match.group(1) if match else None
 
 
-def _typedef_digits(texts, type_name, depth=0):
+def _typedef_digits(texts, type_name, visited=()):
     """The ``fraction-digits`` of typedef ``type_name`` (any module prefix), read in its own body only and
-    following an alias chain to the typedef that declares them; None when not declared."""
+    following an alias chain to the typedef that declares them; None when not declared.
+
+    ``visited`` holds the (module index, name) of the typedefs already followed: an alias to a typedef of the
+    same name in another module (``typedef gain { type t:gain; }``) is followed there, and a loop ends."""
     name = type_name.split(":")[-1]
-    if depth > MAX_TYPEDEF_DEPTH:
+    if len(visited) > MAX_TYPEDEF_DEPTH:
         return None
-    for text in texts:
+    for index, text in enumerate(texts):
+        if (index, name) in visited:
+            continue
         body = _statement_body(text, "typedef", name)
         if body is None:
             continue
@@ -56,8 +104,8 @@ def _typedef_digits(texts, type_name, depth=0):
         if digits is not None:
             return digits
         alias = _type_name(body)
-        if alias and alias.split(":")[-1] != name:
-            return _typedef_digits(texts, alias, depth + 1)
+        if alias:
+            return _typedef_digits(texts, alias, tuple(visited) + ((index, name),))
         return None
     return None
 

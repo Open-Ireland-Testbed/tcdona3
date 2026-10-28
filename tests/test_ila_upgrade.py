@@ -322,3 +322,26 @@ def test_yang_decimals_of_an_undeclared_or_looping_type_are_none():
     assert declared_fraction_digits({"m": module, "t": looping}, "m", ("target-gain",)) is None
     plain = "module t { typedef a { type string; } typedef c { type decimal64 { fraction-digits 1; } } }"
     assert declared_fraction_digits({"m": module, "t": plain}, "m", ("target-gain",)) is None
+
+
+def test_yang_braces_and_keywords_inside_strings_and_comments_are_ignored():
+    from tcdona3._yang_precision import declared_fraction_digits
+    module = "module m { leaf target-gain { type t:g; } }"
+    types = ('module t { typedef g { description "Example } delimiter, type of amplifier { gain";\n'
+             "  // a comment with a } brace and fraction-digits 9\n"
+             "  /* another { one */ reference 'see } here';\n"
+             "  type decimal64 { fraction-digits 3; } } }")
+    assert declared_fraction_digits({"m": module, "t": types}, "m", ("target-gain",)) == 3
+
+
+def test_yang_quoted_arguments_are_read():
+    from tcdona3._yang_precision import declared_fraction_digits
+    module = 'module m { leaf "target-gain" { type "decimal64" { fraction-digits "2"; } } }'
+    assert declared_fraction_digits({"m": module}, "m", ("target-gain",)) == 2
+
+
+def test_yang_alias_to_a_typedef_of_the_same_name_in_another_module():
+    from tcdona3._yang_precision import declared_fraction_digits
+    module = "module m { typedef gain { type t:gain; } leaf target-gain { type gain; } }"
+    types = "module t { typedef gain { type decimal64 { fraction-digits 3; } } }"
+    assert declared_fraction_digits({"m": module, "t": types}, "m", ("target-gain",)) == 3
