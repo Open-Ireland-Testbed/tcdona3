@@ -345,3 +345,36 @@ def test_yang_alias_to_a_typedef_of_the_same_name_in_another_module():
     module = "module m { typedef gain { type t:gain; } leaf target-gain { type gain; } }"
     types = "module t { typedef gain { type decimal64 { fraction-digits 3; } } }"
     assert declared_fraction_digits({"m": module, "t": types}, "m", ("target-gain",)) == 3
+
+
+# ------------------------------------------------------------------------------- legacy EVOA numbering warning
+@pytest.fixture
+def evoa_warning_not_yet_shown(monkeypatch):
+    monkeypatch.setattr(ila_module, "_legacy_evoa_warned", [False])
+
+
+def test_legacy_evoa_numbering_warns_once_per_process_and_writes_as_before(managers, evoa_warning_not_yet_shown):
+    import warnings
+    device, fake = new(managers)
+    fake.replies["get_config"] = Reply(evoa(1, "3.0"))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        device.set_evoa_atten("ab", 3.0)
+        device.set_evoa_atten("ba", 4.0)
+        device.get_evoa_atten("ab")
+    shown = [w for w in caught if "legacy EVOA numbering" in str(w.message)]
+    assert len(shown) == 1 and shown[0].category is UserWarning
+    assert shown[0].filename == __file__  # points at the caller, not at the driver
+    written = [leaves(payload(call))["evoa-id"] for call in fake.calls_to("edit_config")]
+    assert written == ["1", "2"]  # legacy: ab -> 1, ba -> 2, unchanged
+
+
+def test_measured_numbering_and_output_evoa_methods_do_not_warn(managers, evoa_warning_not_yet_shown):
+    import warnings
+    device, fake = new(managers, evoa_numbering="measured")
+    legacy, _ = new(managers)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        device.set_evoa_atten("ab", 3.0)
+        legacy.set_output_evoa_atten("ab", 3.0)
+    assert not [w for w in caught if "legacy EVOA numbering" in str(w.message)]

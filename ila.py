@@ -2,6 +2,7 @@ from ncclient import manager
 import contextlib
 import os
 import math
+import warnings
 import xmltodict
 from tcdona3.utils import *
 from tcdona3._netconf import ReconnectingSession, SessionDropped, close_quietly, is_session_drop, reads_only
@@ -22,6 +23,13 @@ EVOA_LEGACY = {"ab": 1, "ba": 2}
 #: moves the input power of the next amplifier of direction ab, a step of EVOA 1 that of direction ba.
 EVOA_AFTER_DIRECTION = {"ab": 2, "ba": 1}
 EVOA_NUMBERINGS = {"legacy": EVOA_LEGACY, "measured": EVOA_AFTER_DIRECTION}
+#: Shown once per process when get/set_evoa_atten address an EVOA with the legacy numbering.
+LEGACY_EVOA_WARNING = (
+    "ILA get/set_evoa_atten use the legacy EVOA numbering (ab -> EVOA 1, ba -> EVOA 2), kept so that existing "
+    "scripts behave as before. Measured on the line, the output EVOA after direction ab is EVOA 2 and after ba is "
+    "EVOA 1: for the EVOA after a direction use get/set_output_evoa_atten(amp, ...), or ILA(..., "
+    "evoa_numbering='measured').")
+_legacy_evoa_warned = [False]
 #: The amplifier directions of an ILA.
 AMP_DIRECTIONS = ("ab", "ba")
 #: Namespace of the OpenConfig optical-amplifier identities, exactly as the device declares it (misspelt).
@@ -263,6 +271,9 @@ class ILA:
     def _evoa_number(self, amp):
         if amp not in self.evoa_map:
             raise ValueError("Invalid amp name, please enter ab or ba")
+        if self.evoa_map == EVOA_LEGACY and not _legacy_evoa_warned[0]:
+            _legacy_evoa_warned[0] = True
+            warnings.warn(LEGACY_EVOA_WARNING, UserWarning, stacklevel=3)
         return self.evoa_map[amp]
 
     def get_pm_xml(self):

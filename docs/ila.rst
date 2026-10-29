@@ -120,6 +120,7 @@ This usage example demonstrates how to use the ILA API to interact with the ILA 
 
    # The EVOA addressed by get/set_evoa_atten: 'legacy' (default: ab -> 1, ba -> 2) or 'measured'
    # (the output EVOA after each direction: ab -> 2, ba -> 1). get/set_output_evoa_atten always use 'measured'.
+   # With 'legacy', the first get/set_evoa_atten of a process shows a UserWarning saying so.
    ila = ILA('ila_1', evoa_numbering='measured')
 
    # Decimals of the gain and tilt set-points: 1 by default, or as the device YANG declares them
