@@ -304,6 +304,27 @@ def test_parallel_lists_must_have_the_same_length(roadm):
     assert fake.calls == []
 
 
+def test_a_pair_list_ignores_a_list_atten_as_before(roadm):
+    """main wrote the pairs and ignored ``atten``; a list ``atten`` must not be zipped onto the pairs."""
+    device, fake = roadm
+    device.set_demux_atten([(7, 1.2)], [9.0])
+    text = payload(fake.calls_to("edit_config")[0])
+    assert "module=2;connection=7</dn>" in text and "<attenuation>1.2</attenuation>" in text
+    assert "9.0" not in text
+
+
+def test_disable_als_accepts_an_ok_reply_by_its_flag(roadm):
+    device, fake = roadm
+
+    class NamespacedOk(object):
+        ok = True
+
+        def __str__(self):
+            return '<nc:rpc-reply xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0"><nc:ok/></nc:rpc-reply>'
+    fake.replies["dispatch"] = NamespacedOk()
+    assert device.disable_als() is True
+
+
 def test_one_monitored_channel(roadm):
     device, fake = roadm
     fake.replies["get"] = Reply(data.monitored_channels(data.monitored(3101, 1, "-22.0", "191350.0")))

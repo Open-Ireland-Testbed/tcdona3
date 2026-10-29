@@ -163,7 +163,7 @@ class Lumentum(object):
         )
         try:
             rpc_reply = self.m.dispatch(to_ele(command))
-            if "<ok/>" in str(rpc_reply):
+            if getattr(rpc_reply, "ok", False) is True or "<ok/>" in str(rpc_reply):
                 if self.DEBUG:
                     print(
                         "EDFA "
@@ -1956,7 +1956,8 @@ class Lumentum(object):
         ``atten`` the list of their attenuations."""
         if isinstance(connection_id, list):
             pairs = connection_id
-            if isinstance(atten, (list, tuple)):
+            given_as_pairs = all(isinstance(c, (list, tuple)) and len(c) == 2 for c in connection_id)
+            if isinstance(atten, (list, tuple)) and not given_as_pairs:  # pairs: atten is ignored, as always
                 if len(atten) != len(connection_id):
                     raise ValueError("one attenuation per connection is needed")
                 pairs = list(zip(connection_id, atten))
