@@ -11,6 +11,7 @@ from tcdona3.lumentum import (
     LUMENTUM_DEFAULT_WSS_LOSS,
     LUMENTUM_CHANNEL_QUANTITY,
     LUMENTUM_WSS_CHANNEL_FREQ_CENTER_LIST,
+    ip_map as LUMENTUM_IP_MAP,
 )
 import xmltodict
 from tcdona3.polatis import Polatis
@@ -83,6 +84,21 @@ class Monitor:
                 json.dump(data_output, file_output, indent=4)
 
 
+#: The tcdona2 Polatis port table (ol02 only).
+TCDONA2_PORTS_CSV = "/etc/tcdona2/ports.csv"
+
+
+def _tcdona2_lumentum_ports(path=TCDONA2_PORTS_CSV):
+    """``(p1_mux, p1_demux, line_out, line_in)`` Polatis ports of Lumentum_5 from the tcdona2 table, or four
+    None when the table is missing or does not hold them."""
+    try:
+        ports = pd.read_csv(path, sep="\t", index_col="Name")
+        return (int(ports.at["Lumentum_5_p1", "Out"]), int(ports.at["Lumentum_5_p1", "In"]),
+                int(ports.at["Lumentum_5_line", "In"]), int(ports.at["Lumentum_5_line", "Out"]))
+    except (OSError, KeyError, ValueError, TypeError):
+        return None, None, None, None
+
+
 class RoadmMonitor(Monitor):
     def __init__(self, roadm_object):
         super().__init__(roadm_object)
@@ -94,11 +110,12 @@ class RoadmMonitor(Monitor):
         self.roadm_wss_channel_spacing = 50.0
         self.roadm_wss_channel_bw = 50.0
 
-        ports = pd.read_csv("/etc/tcdona2/ports.csv", sep="\t", index_col="Name")
-        self.p1_mux_port = int(ports.at["Lumentum_5_p1", "Out"])
-        self.p1_demux_port = int(ports.at["Lumentum_5_p1", "In"])
-        self.line_out_port = int(ports.at["Lumentum_5_line", "In"])
-        self.line_in_port = int(ports.at["Lumentum_5_line", "Out"])
+        # The address of the monitored ROADM, recorded with each measurement.
+        self.roadm_ip_address = LUMENTUM_IP_MAP.get(self.device_name)
+        # The Polatis ports of the ROADM, as tcdona3 always read them: from the tcdona2 table, which only
+        # exists on ol02 and holds the rows of Lumentum_5 whatever ROADM is monitored. None where the table
+        # is missing (ol4) or unreadable, instead of failing the constructor.
+        self.p1_mux_port, self.p1_demux_port, self.line_out_port, self.line_in_port = _tcdona2_lumentum_ports()
 
         # Loaded from Lumentum class
         self.roadm_wss_channel_attenuation_default = LUMENTUM_DEFAULT_WSS_LOSS

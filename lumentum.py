@@ -1,13 +1,17 @@
+import os
+import re
 import time
 
 import xmltodict
 from ncclient import manager
 from ncclient.xml_ import to_ele
 from tcdona3.utils import *
+from tcdona3._netconf import ReconnectingSession, close_quietly, dispatch_idempotent
 import pprint
 
 pp = pprint.PrettyPrinter(depth=10)
 
+#: Login of the ROADMs; the LUMENTUM_USERNAME and LUMENTUM_PASSWORD environment variables override them.
 LUMENTUM_USERNAME = "superuser"
 LUMENTUM_PASSWORD = "Sup%9User"
 LUMENTUM_DEFAULT_WSS_LOSS = "4.0"
@@ -26,6 +30,15 @@ LUMENTUM_CHACEL_OA_LOSS = 13
 LUMENTUM_WSS_CHANNEL_FREQ_CENTER_LIST = [
     191350.0 + idx * 50.0 for idx in range(LUMENTUM_CHANNEL_QUANTITY)
 ]
+LUMENTUM_OUTSERVICE = "out-of-service"
+LUMENTUM_BOOSTER_ID = 1
+LUMENTUM_PREAMP_ID = 2
+#: OCM monitor ports: the line output after the booster (MUX) and the line input (DEMUX).
+LUMENTUM_MUX_MONITOR_PORT = 6201
+LUMENTUM_DEMUX_MONITOR_PORT = 3101
+#: Attempts of an idempotent WSS RPC whose reply timed out (with ``reconnect=True``), and the wait between them [s].
+RPC_TIMEOUT_ATTEMPTS = 3
+RPC_TIMEOUT_RETRY_WAIT_S = 10.0
 
 ip_map = {
     "roadm_1": "10.10.10.38",
@@ -47,15 +60,40 @@ ip_map = {
 }
 
 
+def _connection_number(dn):
+    """The connection number in a WSS connection dn (``...;connection=<n>``): the number the connection was
+    created with, which need not be its position in a reply."""
+    match = re.search(r"connection=(\d+)", str(dn))
+    if match is None:
+        raise RuntimeError("Lumentum WSS connection without a connection number in its dn: %r" % (dn,))
+    return int(match.group(1))
+
+
+def _strip_prefixes(node):
+    """``node`` (an xmltodict mapping) with its keys without their namespace prefix."""
+    return {key.split(":", 1)[-1]: value for key, value in (node or {}).items()}
+
+
 class Lumentum(object):
     """
     A class used to interact with Lumentum ROADMs. The class provides methods to configure EDFA, WSS, and flex-grid connections. It also checks if the user is authorized to use the device. If the user is not authorized, it raises an Exception and does not connect to the device.
 
     :param roadm_name: The name of the roadm (e.g. roadm_1, roadm_2, etc.)
     :type roadm_name: str
+
+    :param timeout: Optional time allowed to open the session and for each RPC reply, in seconds (default: the
+        ncclient default).
+    :type timeout: float
+
+    :param reconnect: When True, a session that drops is opened again and the operation repeated when that is
+        safe (reads, writes that set a value); a WSS edit whose reply timed out is sent again. Default False:
+        an error propagates at once, as it always did.
+    :type reconnect: bool
+
+    The driver can be used as a context manager; :meth:`close` ends the session.
     """
 
-    def __init__(self, roadm_name, DEBUG=False):
+    def __init__(self, roadm_name, DEBUG=False, timeout=None, reconnect=False):
 
         if roadm_name not in ip_map:
             raise ValueError("Invalid roadm_name")
@@ -63,13 +101,20 @@ class Lumentum(object):
         if not check_patch_owners([(roadm_name + "_p1", roadm_name + "_line")]):
             raise Exception("You are not authorized to use this device")
 
-        self.m = manager.connect(
+        connect_options = dict(
             host=ip_map[roadm_name],
             port=830,
-            username=LUMENTUM_USERNAME,
-            password=LUMENTUM_PASSWORD,
+            username=os.getenv("LUMENTUM_USERNAME", LUMENTUM_USERNAME),
+            password=os.getenv("LUMENTUM_PASSWORD", LUMENTUM_PASSWORD),
             hostkey_verify=False,
         )
+        if timeout is not None:
+            connect_options["timeout"] = timeout
+        session = manager.connect(**connect_options)
+        if reconnect:
+            session = ReconnectingSession(session, lambda: manager.connect(**connect_options),
+                                          "Lumentum " + roadm_name)
+        self.m = session
         self.device_name = roadm_name
         self.DEBUG = DEBUG
         if self.DEBUG:
@@ -80,15 +125,32 @@ class Lumentum(object):
         self.mux_additional_attn = 0
         self.demux_additional_attn = 0
 
-    # def __del__(self):
-    #     self.m.close_session()
+    def close(self):
+        """Close the NETCONF session; a session already gone is not an error."""
+        close_quietly(self.m)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+        return False
 
     def disable_als(self, duration=10):
         """
         Automatic Laser Shutdown (ALS) is a safety feature that automatically shuts down the laser if there is no light detected at the Preamp. This method can be used to disable Automatic Laser Shutdown for a specified duration. Do NOT set this to higher than 1000s.
 
+        On a line that starts and ends at this ROADM, taking the booster out of service even for a moment (as the
+        EDFA setters do) can leave the line dark: no light comes back to the preamp, so the ALS keeps the booster
+        off, and the in-line amplifiers shut down for lack of input. The line does not come back by itself; this
+        method brings it back: the booster lights the line again during ``duration``, long enough for the light
+        to reach the preamp (60 s is enough).
+
         :param duration: The duration for which ALS should be disabled
         :type duration: int
+
+        :return: Whether the device accepted the command (an RPC error is printed, not raised).
+        :rtype: bool
         """
         module_id = 1
 
@@ -101,7 +163,7 @@ class Lumentum(object):
         )
         try:
             rpc_reply = self.m.dispatch(to_ele(command))
-            if "<ok/>" in str(rpc_reply):
+            if getattr(rpc_reply, "ok", False) is True or "<ok/>" in str(rpc_reply):
                 if self.DEBUG:
                     print(
                         "EDFA "
@@ -110,10 +172,12 @@ class Lumentum(object):
                         + str(duration)
                         + " seconds."
                     )
+                return True
 
         except Exception as e:
             print("Encountered the following RPC error!")
             print(e)
+        return False
 
     ### EDFA Operations ###
     @deprecated("Use 'get_edfa_info' instead!")
@@ -465,7 +529,7 @@ class Lumentum(object):
         except Exception as e:
             print("Encountered the following RPC error!")
             print(e)
-            exit(1)
+            raise RuntimeError("Lumentum EDFA RPC error: %s" % e)
 
     def __set_mux_offline(self):
         target_module_id = 1
@@ -569,7 +633,7 @@ class Lumentum(object):
         rpc_reply = self.m.edit_config(target="running", config=command)
 
     def set_demux_constant_gain(self, target_gain, target_gain_tilt=0.0):
-        self.__set_mux_offline()
+        self.__set_demux_offline()
         time.sleep(0.5)
         target_module_id = 2
         command = """<xc:config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -620,7 +684,7 @@ class Lumentum(object):
         rpc_reply = self.m.edit_config(target="running", config=command)
 
     def set_demux_low_gain_mode(self):
-        self.__set_mux_offline()
+        self.__set_demux_offline()
         time.sleep(0.5)
         target_module_id = 2
         command = """<xc:config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -636,7 +700,7 @@ class Lumentum(object):
         rpc_reply = self.m.edit_config(target="running", config=command)
 
     def set_demux_high_gain_mode(self):
-        self.__set_mux_offline()
+        self.__set_demux_offline()
         time.sleep(0.5)
         target_module_id = 2
         command = """<xc:config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
@@ -788,6 +852,121 @@ class Lumentum(object):
         """Get preamp EDFA output power (edfa=2)."""
         return self.get_power_by_module_and_direction(2, "output-power")
 
+    def _edfa_config_leaf(self, edfa_module, leaf):
+        """One leaf of an EDFA module's running config, as the device returns it (str)."""
+        filter_xml = """<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa">
+            <edfa><dn>ne=1;chassis=1;card=1;edfa=%s</dn>
+            <config><%s/></config></edfa></edfas>""" % (int(edfa_module), leaf)
+        reply = xmltodict.parse(self.m.get_config(source="running", filter=("subtree", to_ele(filter_xml))).data_xml)
+        config = _strip_prefixes(reply["data"]["edfas"]["edfa"]["config"])
+        value = config[leaf]
+        return str(value.get("#text", "")) if isinstance(value, dict) else str(value)
+
+    def _write_edfa_config_leaf(self, edfa_module, leaf, value):
+        """Write exactly one leaf of an EDFA module's config, nothing else."""
+        command = """<xc:config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+            <edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa">
+            <edfa><dn>ne=1;chassis=1;card=1;edfa=%s</dn>
+            <config><%s>%s</%s></config></edfa></edfas></xc:config>""" % (int(edfa_module), leaf, value, leaf)
+        try:
+            self.m.edit_config(target="running", config=command)
+        except Exception as e:
+            raise RuntimeError("Lumentum EDFA RPC error: %s" % e)
+
+    def get_maintenance_state(self, edfa_module):
+        """The configured maintenance state of an EDFA module (1 booster, 2 preamp): 'in-service' or
+        'out-of-service'."""
+        return self._edfa_config_leaf(edfa_module, "maintenance-state")
+
+    def set_maintenance_state(self, edfa_module, maintenance_state):
+        """Put an EDFA module (1 booster, 2 preamp) in or out of service; only the maintenance state is written."""
+        if maintenance_state not in (LUMENTUM_INSERVICE, LUMENTUM_OUTSERVICE):
+            raise ValueError("maintenance_state must be 'in-service' or 'out-of-service', got %r"
+                             % (maintenance_state,))
+        self._write_edfa_config_leaf(edfa_module, "maintenance-state", maintenance_state)
+
+    def get_gain_switch_mode(self, edfa_module):
+        """The gain-switch mode of an EDFA module (1 booster, 2 preamp): 'low-gain' or 'high-gain'."""
+        return self._edfa_config_leaf(edfa_module, "gain-switch-mode")
+
+    def set_gain_switch_mode(self, edfa_module, gain_switch_mode):
+        """Write the gain-switch mode of an EDFA module alone.
+
+        The device accepts it only while the module is out of service: take it there first with
+        :meth:`set_maintenance_state` and bring it back after (or use the ``set_*_gain_mode`` methods).
+        """
+        if gain_switch_mode not in ("low-gain", "high-gain"):
+            raise ValueError("gain_switch_mode must be 'low-gain' or 'high-gain', got %r" % (gain_switch_mode,))
+        self._write_edfa_config_leaf(edfa_module, "gain-switch-mode", gain_switch_mode)
+
+    def get_target_tilt_by_module(self, target_module_id):
+        """The target gain tilt [dB] of an EDFA module (1 booster, 2 preamp), or None on error."""
+        try:
+            return float(self._edfa_config_leaf(target_module_id, "target-gain-tilt"))
+        except Exception as e:
+            print(f"Error retrieving target gain tilt for EDFA module {target_module_id}:", e)
+            return None
+
+    def get_mux_target_tilt(self):
+        """Get target gain tilt for booster EDFA module (edfa=1)."""
+        return self.get_target_tilt_by_module(LUMENTUM_BOOSTER_ID)
+
+    def get_demux_target_tilt(self):
+        """Get target gain tilt for preamp EDFA module (edfa=2)."""
+        return self.get_target_tilt_by_module(LUMENTUM_PREAMP_ID)
+
+    def edfa_state(self, module_id):
+        """The ``state`` subtree of one EDFA module (1 booster, 2 preamp) from a single ``get``: its powers,
+        measured gain and internal leaves (VOAs, pumps), read at one instant.
+
+        The module is picked by its ``dn`` (``...;edfa=<module_id>``), whatever the order of the reply.
+
+        :return: The parsed subtree (xmltodict; one VOA is a dict, several a list).
+        :rtype: dict
+
+        :raises RuntimeError: When the reply holds no EDFA ``module_id``.
+        """
+        command = """<filter><edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa"
+                  xmlns:lotee="http://www.lumentum.com/lumentum-ote-edfa"></edfas></filter>"""
+        modules = xmltodict.parse(self.m.get(command).data_xml)["data"]["edfas"]["edfa"]
+        modules = modules if isinstance(modules, list) else [modules]
+        wanted = "edfa=%d" % int(module_id)
+        for module in modules:
+            module = _strip_prefixes(module)
+            if wanted in str(module.get("dn", "")).split(";"):
+                return module["state"]
+        raise RuntimeError("Lumentum EDFA %d is not in the reply" % int(module_id))
+
+    def line_port(self):
+        """The line port of the ROADM (physical port 3001): its ``state`` and ``config`` subtrees from a single
+        ``get``, the leaf names without their prefix. The port carries the output VOA after the booster
+        (``outvoa-actual-attenuation``, ``outvoa-target-attenuation``), the power leaving the node
+        (``output-power``) and the power entering it before the preamp (``input-power``).
+
+        :rtype: dict
+        """
+        command = """<filter><physical-ports xmlns="http://www.lumentum.com/lumentum-ote-port"><physical-port>
+                  <dn>ne=1;chassis=1;card=1;port=3001</dn></physical-port></physical-ports></filter>"""
+        port = xmltodict.parse(self.m.get(command).data_xml)["data"]["physical-ports"]["physical-port"]
+        port = port[0] if isinstance(port, list) else port
+        return {"state": _strip_prefixes(port.get("state")), "config": _strip_prefixes(port.get("config"))}
+
+    def set_outvoa_attenuation(self, attenuation_db):
+        """Set the output VOA after the booster (``outvoa-target-attenuation`` of the line port 3001) [dB, one
+        decimal]. The booster's output power is unchanged; the input of the next amplifier moves by the step."""
+        value = float(attenuation_db)
+        if value != value or value in (float("inf"), float("-inf")) or value < 0:
+            raise ValueError("output VOA attenuation must be a finite value >= 0 dB, got %r" % (attenuation_db,))
+        command = """<xc:config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0">
+                <physical-ports xmlns="http://www.lumentum.com/lumentum-ote-port"><physical-port>
+                <dn>ne=1;chassis=1;card=1;port=3001</dn>
+                <config><outvoa-target-attenuation>%.1f</outvoa-target-attenuation></config>
+                </physical-port></physical-ports></xc:config>""" % value
+        try:
+            self.m.edit_config(target="running", config=command)
+        except Exception as e:
+            raise RuntimeError("Lumentum port RPC error: %s" % e)
+
 
     def debug_edfa(self, DEBUG=False):
         """This method dumps all the EDFA information for the booster and preamp EDFA modules in the ROADM in form of a dictionary, which is parsed from XML data. The method is useful for debugging purposes.
@@ -810,7 +989,7 @@ class Lumentum(object):
     def __reset_ports_info(self):
         self.port_info = {}
 
-    @deprecated("Use 'port_get_info' instead!")
+    @deprecated("Use 'ports_get_info' instead!")
     def get_ports_info(self):
         """
         DEPREACTED: Use new 'get_port_info' instead
@@ -884,7 +1063,7 @@ class Lumentum(object):
         except Exception as e:
             print("Encountered the following RPC error!")
             print(e)
-            exit(1)
+            raise RuntimeError("Lumentum port RPC error: %s" % e)
 
         return self.port_info
 
@@ -948,7 +1127,7 @@ class Lumentum(object):
 
         except Exception as e:
             print(f"get_ports_info RPC error: {e}")
-            exit(1)
+            raise RuntimeError("Lumentum port RPC error: %s" % e)
 
     ### WSS Operations ###
     class WSSConnection(object):
@@ -1139,6 +1318,9 @@ class Lumentum(object):
                 # print("Only WSS1 (MUX) connections exist, # of connections: 1")
                 self.wss_connections["mux"]["conn-1"] = {}
                 self.wss_connections["mux"]["conn-1"]["id"] = 1
+                self.wss_connections["mux"]["conn-1"]["connection"] = _connection_number(
+                    connections["dn"]
+                )
                 self.wss_connections["mux"]["conn-1"]["connection-id"] = str(
                     connections["state"]["entity-description"]
                 )
@@ -1184,6 +1366,9 @@ class Lumentum(object):
                     cur_conn_name = "conn-" + str(cur_conn_idx + 1)
                     self.wss_connections["mux"][cur_conn_name] = {}
                     self.wss_connections["mux"][cur_conn_name]["id"] = cur_conn_idx
+                    self.wss_connections["mux"][cur_conn_name]["connection"] = _connection_number(
+                        cur_conn["dn"]
+                    )
                     self.wss_connections["mux"][cur_conn_name]["connection-id"] = str(
                         cur_conn["state"]["entity-description"]
                     )
@@ -1230,6 +1415,9 @@ class Lumentum(object):
                 # print("Only WSS2 (DEMUX) connections exist, # of connections: 1")
                 self.wss_connections["demux"]["conn-1"] = {}
                 self.wss_connections["demux"]["conn-1"]["id"] = 1
+                self.wss_connections["demux"]["conn-1"]["connection"] = _connection_number(
+                    connections["dn"]
+                )
                 self.wss_connections["demux"]["conn-1"]["connection-id"] = str(
                     connections["state"]["entity-description"]
                 )
@@ -1275,6 +1463,9 @@ class Lumentum(object):
                     cur_conn_name = "conn-" + str(cur_conn_idx + 1)
                     self.wss_connections["demux"][cur_conn_name] = {}
                     self.wss_connections["demux"][cur_conn_name]["id"] = cur_conn_idx
+                    self.wss_connections["demux"][cur_conn_name]["connection"] = _connection_number(
+                        cur_conn["dn"]
+                    )
                     self.wss_connections["demux"][cur_conn_name]["connection-id"] = str(
                         cur_conn["state"]["entity-description"]
                     )
@@ -1329,6 +1520,9 @@ class Lumentum(object):
                     cur_conn_name = "conn-" + str(conn_mux_id)
                     self.wss_connections["mux"][cur_conn_name] = {}
                     self.wss_connections["mux"][cur_conn_name]["id"] = conn_mux_id
+                    self.wss_connections["mux"][cur_conn_name]["connection"] = _connection_number(
+                        cur_conn["dn"]
+                    )
                     self.wss_connections["mux"][cur_conn_name]["connection-id"] = str(
                         cur_conn["state"]["entity-description"]
                     )
@@ -1374,6 +1568,9 @@ class Lumentum(object):
                     cur_conn_name = "conn-" + str(conn_demux_id)
                     self.wss_connections["demux"][cur_conn_name] = {}
                     self.wss_connections["demux"][cur_conn_name]["id"] = conn_demux_id
+                    self.wss_connections["demux"][cur_conn_name]["connection"] = _connection_number(
+                        cur_conn["dn"]
+                    )
                     self.wss_connections["demux"][cur_conn_name]["connection-id"] = str(
                         cur_conn["state"]["entity-description"]
                     )
@@ -1497,14 +1694,17 @@ class Lumentum(object):
                 # Re-initialize wss_connections
                 self.monitored_channels = {"mux": {}, "demux": {}}
             else:
-                connections = []
-                print("No WSS connections exist.")
+                monitored_channels = []
+                self.monitored_channels = {"mux": {}, "demux": {}}
+                print("No monitored channels exist.")
 
         except Exception as e:
             print("Encountered the following RPC error!")
             print(e)
             raise RuntimeError(e)
 
+        if isinstance(monitored_channels, dict):
+            monitored_channels = [monitored_channels]
         mon_mux_id = 0
         mon_demux_id = 0
         for cur_monchan_idx in range(len(monitored_channels)):
@@ -1565,11 +1765,52 @@ class Lumentum(object):
     def get_demux_monitored_power(self):
         return self.wss_get_monitored_power("demux")
 
+    def monitored_channel_rows(self, port):
+        """The channels the OCM monitors at ``port`` (6201: the line output after the booster, one per MUX
+        connection; 3101: the line input, one per DEMUX connection), read from ``monitored-channels``.
+
+        :return: One dict per channel: ``start-freq``, ``end-freq`` [GHz], ``power`` [dBm, None when not
+            reported], ``valid-data`` and ``entity-description``.
+        :rtype: list
+        """
+        import xml.etree.ElementTree as ET
+
+        command = '<monitored-channels xmlns="http://www.lumentum.com/lumentum-ote-monitored-channel"/>'
+        reply = self.m.get(filter=("subtree", to_ele(command)))
+
+        def local(tag):
+            return tag.split("}")[-1]
+
+        rows = []
+        for channel in (e for e in ET.fromstring(reply.data_xml).iter() if local(e.tag) == "monitored-channel"):
+            leaves = {local(e.tag): (e.text or "").strip() for e in channel.iter()
+                      if e is not channel and (e.text or "").strip()}
+            if "port=%d" % int(port) not in leaves.get("dn", "").split(";"):
+                continue
+            if "start-freq" not in leaves or "end-freq" not in leaves:
+                continue
+            rows.append({"start-freq": float(leaves["start-freq"]), "end-freq": float(leaves["end-freq"]),
+                         "power": float(leaves["power"]) if leaves.get("power") else None,
+                         "valid-data": leaves.get("valid-data", "true"),
+                         "entity-description": leaves.get("entity-description")})
+        return rows
+
+    def get_frequency(self):
+        """The measured frequencies of the channels the OCM monitors after the booster (MUX), in Hz."""
+        channels = self.wss_get_monitored_channels()
+        return [entry["frequency"] * 1e9 for entry in channels["mux"].values()]
+
     def wss_print_connections(self):
         """
         Print WSS connections
         """
         pp.pprint(self.wss_get_connections())
+
+    def _dispatch_idempotent(self, command):
+        """Dispatch a WSS edit that leaves the device as once when sent twice; with ``reconnect=True`` it is
+        sent again when its reply times out."""
+        return dispatch_idempotent(self.m, to_ele(command), repeats=RPC_TIMEOUT_ATTEMPTS - 1,
+                                   wait_s=RPC_TIMEOUT_RETRY_WAIT_S)
 
     def wss_add_connection(
         self,
@@ -1620,7 +1861,7 @@ class Lumentum(object):
         )
 
         try:
-            rpc_reply = self.m.dispatch(to_ele(command))
+            rpc_reply = self._dispatch_idempotent(command)
             if "<ok/>" in str(rpc_reply):
                 print(
                     "WSS "
@@ -1669,7 +1910,7 @@ class Lumentum(object):
                     blocked,
                 )
                 try:
-                    rpc_reply = self.m.dispatch(to_ele(command))
+                    rpc_reply = self._dispatch_idempotent(command)
                     if "<ok/>" in str(rpc_reply):
                         print("WSS " + str(wss_id) + ": modified connection " + str(c))
                 except Exception as e:
@@ -1689,7 +1930,7 @@ class Lumentum(object):
                 blocked,
             )
             try:
-                rpc_reply = self.m.dispatch(to_ele(command))
+                rpc_reply = self._dispatch_idempotent(command)
                 if "<ok/>" in str(rpc_reply):
                     print(
                         "WSS "
@@ -1710,9 +1951,18 @@ class Lumentum(object):
         self.wss_atten(2, 5201, connection_id, atten)
 
     def wss_atten(self, wss_id, output_port, connection_id, atten=0.0):
+        """Set the attenuation of one connection (``connection_id`` and ``atten`` scalars), or of several in one
+        edit: ``connection_id`` a list of ``(connection, attenuation)`` pairs, or a list of connections with
+        ``atten`` the list of their attenuations."""
         if isinstance(connection_id, list):
+            pairs = connection_id
+            given_as_pairs = all(isinstance(c, (list, tuple)) and len(c) == 2 for c in connection_id)
+            if isinstance(atten, (list, tuple)) and not given_as_pairs:  # pairs: atten is ignored, as always
+                if len(atten) != len(connection_id):
+                    raise ValueError("one attenuation per connection is needed")
+                pairs = list(zip(connection_id, atten))
             command = '<xc:config xmlns:xc="urn:ietf:params:xml:ns:netconf:base:1.0"><connections xmlns="http://www.lumentum.com/lumentum-ote-connection" xmlns:lotet="http://www.lumentum.com/lumentum-ote-connection">'
-            for ch, val in connection_id:
+            for ch, val in pairs:
                 subcommand = """<connection>
                     <dn>ne=1;chassis=1;card=1;module=%s;connection=%s</dn>
                     <config>
@@ -1747,7 +1997,7 @@ class Lumentum(object):
                 str(atten),
             )
             try:
-                rpc_reply = self.m.dispatch(to_ele(command))
+                rpc_reply = self._dispatch_idempotent(command)
                 if "<ok/>" in str(rpc_reply):
                     print(
                         "WSS "
@@ -1817,7 +2067,7 @@ class Lumentum(object):
                     str(port),
                 )
                 try:
-                    rpc_reply = self.m.dispatch(to_ele(command))
+                    rpc_reply = self._dispatch_idempotent(command)
                     if "<ok/>" in str(rpc_reply):
                         print("WSS " + str(wss_id) + ": modified connection " + str(c))
                 except Exception as e:
@@ -1836,7 +2086,7 @@ class Lumentum(object):
                 str(port),
             )
             try:
-                rpc_reply = self.m.dispatch(to_ele(command))
+                rpc_reply = self._dispatch_idempotent(command)
                 if "<ok/>" in str(rpc_reply):
                     print(
                         "WSS "
@@ -1863,7 +2113,7 @@ class Lumentum(object):
                     str(port),
                 )
                 try:
-                    rpc_reply = self.m.dispatch(to_ele(command))
+                    rpc_reply = self._dispatch_idempotent(command)
                     if "<ok/>" in str(rpc_reply):
                         print("WSS " + str(wss_id) + ": modified connection " + str(c))
                 except Exception as e:
@@ -1875,14 +2125,14 @@ class Lumentum(object):
             command = """
                   <add-connection xmlns="http://www.lumentum.com/lumentum-ote-connection">
                     <dn>ne=1;chassis=1;card=1;module=%s;connection=%s</dn>
-                    <output-reference>ne=1;chassis=1;card=1;port=%s</output-port-reference>
+                    <output-port-reference>ne=1;chassis=1;card=1;port=%s</output-port-reference>
                   </add-connection>""" % (
                 str(wss_id),
                 str(connection_id),
                 str(port),
             )
             try:
-                rpc_reply = self.m.dispatch(to_ele(command))
+                rpc_reply = self._dispatch_idempotent(command)
                 if "<ok/>" in str(rpc_reply):
                     print(
                         "WSS "
@@ -1890,7 +2140,7 @@ class Lumentum(object):
                         + ": modified connection "
                         + str(connection_id)
                         + " "
-                        + port
+                        + str(port)
                     )
 
             except Exception as e:

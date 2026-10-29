@@ -56,7 +56,7 @@ class Polatis:
         port: int = 830,
         username: str = "admin",
         password: str = "root",
-        db_host: str = "127.0.0.1",
+        db_host: str = "10.10.10.4",
         db_user: str = "testbed",
         db_pass: str = "mypassword",
         db_name: str = "provdb",

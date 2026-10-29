@@ -95,15 +95,33 @@ This usage example demonstrates how to use the ILA API to interact with the ILA 
    # Apply the patch list to the Polatis
    pol.apply_patch_list(patch_list)
 
-   # Configure the target gain of the ILA
-   ila.set_target_gain(10)
-
-   # Get the current gain of the ILA
-   ila.get_current_gain()
+   # Configure the target gain of amplifier AB, and read back its target and the gain it achieves
+   ila.set_target_gain('ab', 10)
+   ila.get_target_gain('ab')     # the leaf text, e.g. '10.00'
+   ila.get_actual_gain('ab')     # a float, in dB
 
    # Set the Amplifier state to to in-service
-   ila.set_amp_state('ab', 'true')
+   ila.set_amp_state('ab', True)
 
-   # Dump the PM data to a XML file
+   # Dump the PM data to a XML file (get_pm_xml returns a list holding one XML string)
    with open('ila_pm.xml', 'w') as f:
-       f.write(ila.get_pm_xml())
+       f.write(ila.get_pm_xml()[0])
+
+   # Close the NETCONF session
+   ila.close()
+
+**Options**
+
+.. code-block:: python
+
+   # Every write is one candidate transaction (lock, discard, edit, commit); a failed one is discarded.
+   # reconnect=True opens a dropped session again; timeout bounds the connection and every reply.
+   ila = ILA('ila_1', timeout=30, reconnect=True)
+
+   # The EVOA addressed by get/set_evoa_atten: 'legacy' (default: ab -> 1, ba -> 2) or 'measured'
+   # (the output EVOA after each direction: ab -> 2, ba -> 1). get/set_output_evoa_atten always use 'measured'.
+   # With 'legacy', the first get/set_evoa_atten of a process shows a UserWarning saying so.
+   ila = ILA('ila_1', evoa_numbering='measured')
+
+   # Decimals of the gain and tilt set-points: 1 by default, or as the device YANG declares them
+   ila = ILA('ila_1', setpoint_digits='device')

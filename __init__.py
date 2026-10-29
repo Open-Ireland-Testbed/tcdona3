@@ -1,4 +1,4 @@
-__version__ = "1.0.4"
+__version__ = "1.1.0"
 # tcdona3/__init__.py
 """
 Top-level package for the Open Ireland Optical Testbed v3 control code.
@@ -14,10 +14,11 @@ from importlib import import_module
 __all__ = []
 
 
-def _try_import(module_name: str, names: list) -> None:
+def _try_import(module_name: str, names: list, aliases: dict = None) -> None:
     """
     Try to import `tcdona3.<module_name>` and re-export the given
-    attribute names if present. Failures are ignored so that
+    attribute names if present, and each `aliases` key as another name
+    of the attribute it maps to. Failures are ignored so that
     `import tcdona3` always succeeds.
     """
     try:
@@ -26,10 +27,12 @@ def _try_import(module_name: str, names: list) -> None:
         # Optional dependency or environment-specific module failed to import
         return
 
-    for name in names:
-        if hasattr(mod, name):
-            globals()[name] = getattr(mod, name)
-            __all__.append(name)
+    exports = [(name, name) for name in names] + sorted((aliases or {}).items())
+    for name, attribute in exports:
+        if hasattr(mod, attribute):
+            globals()[name] = getattr(mod, attribute)
+            if name not in __all__:
+                __all__.append(name)
 
 
 # Core / top-level devices
@@ -47,10 +50,11 @@ _try_import("monitor", ["Monitor", "RoadmMonitor"])
 # OSA and related
 _try_import("osa", ["OSA"])
 # Other instruments
-_try_import("yokogawa", ["Yokogawa"])
-_try_import("quadflex", ["QuadFlex"])
-_try_import("teraflex", ["TeraFlex"])
-_try_import("teraflex_paramiko", ["TeraFlexParamiko"])
+# The class names, and the names this file always meant to export as aliases.
+_try_import("yokogawa", ["YokogawaOSA"], {"Yokogawa": "YokogawaOSA"})
+_try_import("quadflex", ["QFlex"], {"QuadFlex": "QFlex"})
+_try_import("teraflex", ["TFlex"], {"TeraFlex": "TFlex"})
+_try_import("teraflex_paramiko", ["TeraflexSSH"], {"TeraFlexParamiko": "TeraflexSSH"})
 
 # Utilities (functions/constants only; safe to expose if import works)
 _try_import("utils", ["check_patch_owners", "load_csv_with_pandas"])  # extend if needed
