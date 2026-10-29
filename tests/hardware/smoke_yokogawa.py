@@ -82,9 +82,7 @@ def interrupts_held():
     """Ctrl-C is held while the device is put back: the restore runs to its end, then the run ends."""
     received = []
 
-    def hold(signum, frame):
-        if not received:
-            print("[info] Ctrl-C: the device is being put back first")
+    def hold(signum, frame):  # no I/O here: a print during a print raises a reentrant-call error
         received.append(signum)
 
     previous = signal.signal(signal.SIGINT, hold)
@@ -92,6 +90,8 @@ def interrupts_held():
         yield received
     finally:
         signal.signal(signal.SIGINT, previous)
+        if received:
+            print("[info] Ctrl-C was held until the device was put back")
 
 
 
