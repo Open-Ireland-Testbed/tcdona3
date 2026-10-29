@@ -378,3 +378,29 @@ def test_measured_numbering_and_output_evoa_methods_do_not_warn(managers, evoa_w
         device.set_evoa_atten("ab", 3.0)
         legacy.set_output_evoa_atten("ab", 3.0)
     assert not [w for w in caught if "legacy EVOA numbering" in str(w.message)]
+
+
+def test_yang_a_prefixed_type_resolves_in_the_module_its_prefix_binds():
+    """A local typedef of the same name must not shadow the imported one named by the prefix."""
+    from tcdona3._yang_precision import declared_fraction_digits
+    module = ("module m { prefix m; import t-types { prefix t; } "
+              "typedef gain { type decimal64 { fraction-digits 1; } } leaf target-gain { type t:gain; } }")
+    types = "module t-types { prefix tt; typedef gain { type decimal64 { fraction-digits 3; } } }"
+    assert declared_fraction_digits({"m": module, "t-types": types}, "m", ("target-gain",)) == 3
+    # the module's own prefix, and no prefix, resolve locally
+    local = module.replace("type t:gain;", "type m:gain;")
+    assert declared_fraction_digits({"m": local, "t-types": types}, "m", ("target-gain",)) == 1
+    bare = module.replace("type t:gain;", "type gain;")
+    assert declared_fraction_digits({"m": bare, "t-types": types}, "m", ("target-gain",)) == 1
+    # a prefix not imported resolves in the module that declares it
+    unimported = ("module m { prefix m; typedef gain { type decimal64 { fraction-digits 1; } } "
+                  "leaf target-gain { type tt:gain; } }")
+    assert declared_fraction_digits({"m": unimported, "t-types": types}, "m", ("target-gain",)) == 3
+
+
+def test_yang_single_quoted_arguments_are_read():
+    from tcdona3._yang_precision import declared_fraction_digits
+    module = "module m { leaf 'target-gain' { type 'decimal64' { fraction-digits '2'; } } }"
+    assert declared_fraction_digits({"m": module}, "m", ("target-gain",)) == 2
+    aliased = "module m { prefix m; typedef 'g' { type 'decimal64' { fraction-digits '3'; } } leaf target-gain { type 'm:g'; } }"
+    assert declared_fraction_digits({"m": aliased}, "m", ("target-gain",)) == 3

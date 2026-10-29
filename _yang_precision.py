@@ -64,7 +64,7 @@ def _first_statement(text, pattern):
 
 def _statement_body(text, keyword, name):
     """The statements of ``<keyword> <name> { ... }``, braces balanced; names may be quoted."""
-    match = _first_statement(text, r'\b%s\s+"?%s"?\s*\{' % (keyword, re.escape(name)))
+    match = _first_statement(text, r'\b%s\s+["\']?%s["\']?\s*\{' % (keyword, re.escape(name)))
     if match is None:
         return None
     return text[match.end():_body_end(text, match.end())]
@@ -76,28 +76,86 @@ def _leaf_body(text, leaf):
 
 
 def _fraction_digits(body):
-    match = _first_statement(body, r'\bfraction-digits\s+"?(\d+)')
+    match = _first_statement(body, r'\bfraction-digits\s+["\']?(\d+)')
     return int(match.group(1)) if match else None
 
 
 def _type_name(body):
-    match = _first_statement(body, r'\btype\s+"?([\w:\-]+)"?')
+    match = _first_statement(body, r'\btype\s+["\']?([\w:\-.]+)["\']?')
     return match.group(1) if match else None
 
 
-def _typedef_digits(texts, type_name, visited=()):
-    """The ``fraction-digits`` of typedef ``type_name`` (any module prefix), read in its own body only and
-    following an alias chain to the typedef that declares them; None when not declared.
+_IDENTIFIER = r"[\w\-.]+"
 
-    ``visited`` holds the (module index, name) of the typedefs already followed: an alias to a typedef of the
-    same name in another module (``typedef gain { type t:gain; }``) is followed there, and a loop ends."""
+
+def _top_level_prefix(text):
+    """The prefix a module declares for itself: its ``prefix`` statement at the top level of the module."""
+    match = _first_statement(text, r"\b(?:sub)?module\s+[\"']?%s[\"']?\s*\{" % _IDENTIFIER)
+    if match is None:
+        return None
+    depth = 1
+    for index in _code_positions(text, match.end()):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return None
+        elif depth == 1 and text.startswith("prefix", index) and not re.match(r"[\w\-.:]", text[index - 1]):
+            found = re.compile(r"prefix\s+[\"']?(%s)" % _IDENTIFIER).match(text, index)
+            if found:
+                return found.group(1)
+    return None
+
+
+def _import_prefixes(text):
+    """``{prefix: module name}`` of the ``import`` statements of a module."""
+    imports, code = {}, None
+    for match in re.finditer(r"\bimport\s+[\"']?(%s)[\"']?\s*\{" % _IDENTIFIER, text):
+        if code is None:
+            code = set(_code_positions(text))
+        if match.start() not in code:  # inside a string or a comment
+            continue
+        body = text[match.end():_body_end(text, match.end())]
+        prefix = _first_statement(body, r"\bprefix\s+[\"']?(%s)" % _IDENTIFIER)
+        if prefix:
+            imports[prefix.group(1)] = match.group(1)
+    return imports
+
+
+def _search_order(names, texts, current, type_name):
+    """The module indexes where typedef ``type_name`` is looked for, from ``current`` (the module that uses it):
+    the module its prefix binds first (an import of ``current``, or a module declaring that prefix), the
+    current module first for an unprefixed name, then all the others."""
+    first = []
+    if ":" in type_name:
+        prefix = type_name.split(":", 1)[0]
+        if current is not None and prefix == _top_level_prefix(texts[current]):
+            first.append(current)
+        elif current is not None and _import_prefixes(texts[current]).get(prefix) in names:
+            first.append(names.index(_import_prefixes(texts[current])[prefix]))
+        else:
+            first.extend(index for index, text in enumerate(texts) if _top_level_prefix(text) == prefix)
+    elif current is not None:
+        first.append(current)
+    return first + [index for index in range(len(texts)) if index not in first]
+
+
+def _typedef_digits(names, texts, type_name, current=None, visited=()):
+    """The ``fraction-digits`` of typedef ``type_name``, read in its own body only and following an alias chain
+    to the typedef that declares them; None when not declared.
+
+    The typedef is looked for where its prefix binds it (:func:`_search_order`); ``visited`` holds the
+    (module index, name) of the typedefs already followed, so that an alias to a typedef of the same name in
+    another module (``typedef gain { type t:gain; }``) is followed there and a loop ends."""
     name = type_name.split(":")[-1]
     if len(visited) > MAX_TYPEDEF_DEPTH:
         return None
-    for index, text in enumerate(texts):
+    for index in _search_order(names, texts, current, type_name):
         if (index, name) in visited:
             continue
-        body = _statement_body(text, "typedef", name)
+        body = _statement_body(texts[index], "typedef", name)
         if body is None:
             continue
         digits = _fraction_digits(body)
@@ -105,7 +163,7 @@ def _typedef_digits(texts, type_name, visited=()):
             return digits
         alias = _type_name(body)
         if alias:
-            return _typedef_digits(texts, alias, tuple(visited) + ((index, name),))
+            return _typedef_digits(names, texts, alias, index, tuple(visited) + ((index, name),))
         return None
     return None
 
@@ -124,7 +182,8 @@ def declared_fraction_digits(schemas, module, leaves):
         digits = _fraction_digits(body)
         if digits is None:
             type_name = _type_name(body)
-            digits = _typedef_digits(list(schemas.values()), type_name) if type_name else None
+            names, texts = list(schemas), list(schemas.values())
+            digits = _typedef_digits(names, texts, type_name, names.index(module)) if type_name else None
         if digits is None:
             return None
         found.append(digits)
