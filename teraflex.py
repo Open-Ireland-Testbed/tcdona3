@@ -327,10 +327,7 @@ class TFlex:
                 <terminal-device xmlns="http://openconfig.net/yang/terminal-device">
                     <logical-channels>
                         <channel nc:operation="delete">
-                            <config>
-                                <index>{self._config[self.line_port]['index']}</index>
-                                <description>{self.line_port}</description>
-                            </config>
+                            <index>{self._config[self.line_port]['index']}</index>
                         </channel>
                     </logical-channels>
                 </terminal-device>
@@ -449,6 +446,7 @@ class TFlex:
         request = f"""
         <oc-platform:components xmlns:oc-platform="http://openconfig.net/yang/platform">
         <oc-platform:component>
+        <oc-platform:name>optch {self.line_port}</oc-platform:name>
         <oc-platform:config>
         <oc-platform:name>optch {self.line_port}</oc-platform:name>
         </oc-platform:config>
@@ -481,6 +479,7 @@ class TFlex:
         <nc:config xmlns:nc="urn:ietf:params:xml:ns:netconf:base:1.0">
         <oc-platform:components xmlns:oc-platform="http://openconfig.net/yang/platform">
         <oc-platform:component>
+        <oc-platform:name>optch {self.line_port}</oc-platform:name>
         <oc-platform:config>
         <oc-platform:name>optch {self.line_port}</oc-platform:name>
         </oc-platform:config>
