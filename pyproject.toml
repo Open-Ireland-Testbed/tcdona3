@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tcdona3"
+version = "1.1.0"
+description = "Open Ireland optical testbed v3 control code"
+readme = "README.md"
+requires-python = ">=3.6"
+dependencies = [
+    "ncclient",
+    "lxml",
+    "xmltodict",
+    "paramiko>=3,<5",
+    "pyvisa",
+    "numpy",
+    "matplotlib",
+    "pandas",
+    "mysql-connector-python",
+    "pyserial",
+    "pyusb",
+]
+
+[tool.setuptools]
+packages = ["tcdona3", "tcdona3.polatis", "tcdona3.ApexOSA"]
+package-dir = { "tcdona3" = ".", "tcdona3.polatis" = "polatis", "tcdona3.ApexOSA" = "ApexOSA" }
+
+[tool.setuptools.package-data]
+tcdona3 = ["cassini_attributes.csv"]
