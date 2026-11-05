@@ -230,3 +230,85 @@ class FakeShell(object):
 
     def close(self):
         self.closed = True
+
+
+def curve_payload(values):
+    """Encode raw OTDR counts as the 4-hex-digit-per-point ``CURve:BUFfer?`` payload."""
+    return b"".join(("%04X" % (int(value) & 0xFFFF)).encode("ascii") for value in values)
+
+
+class FakeScpiTransport(object):
+    """A line-oriented SCPI socket standing for :class:`tcdona3.mts4000._SCPISocket`.
+
+    ``responder(command, session)`` answers a query; ``blocks`` maps a block query to its payload.
+    Set commands are recorded in ``sent`` and tracked in ``state`` so a configure/get_config round
+    trip behaves like the instrument. ``acquisition_statuses`` is an iterator consumed by
+    ``STATus:ACQ?`` (the last value repeats).
+    """
+
+    def __init__(self, responder=None, blocks=None, statuses=None):
+        self.responder = responder
+        self.blocks = dict(blocks or {})
+        self.sent = []
+        self.queries = []
+        self.block_queries = []
+        self.state = {
+            "laser": "L1550", "pulse": "P100NS", "range_km": "20", "auto_range": "NO",
+            "max_time": "30", "acquisition_mode": "MAN", "resolution": "HRES,0.6",
+            "units": "KM", "splice": "50", "reflectance": "-40", "end_of_fiber": "3",
+        }
+        self.statuses = iter(statuses or ("STOPPED",))
+        self._last_status = "STOPPED"
+        self.closed = False
+        self.connected = True
+
+    def connect(self):
+        return self
+
+    def close(self):
+        self.closed = True
+        self.connected = False
+
+    def send(self, command):
+        self.sent.append(command)
+        self._track(command)
+
+    def _track(self, command):
+        text = command.strip()
+        if text.startswith("OTDSetup:LASer "):
+            self.state["laser"] = text.split(None, 1)[1]
+        elif text.startswith("OTDSetup:LPULse "):
+            _, rest = text.split(None, 1)
+            laser, pulse = rest.split(",")
+            self.state["laser"], self.state["pulse"] = laser, pulse
+        elif text.startswith("OTDSetup:PULSe "):
+            self.state["pulse"] = text.split(None, 1)[1]
+        elif text.startswith("OTDSetup:KMRange "):
+            self.state["range_km"] = text.split(None, 1)[1]
+        elif text.startswith("OTDSetup:RAUto "):
+            self.state["auto_range"] = text.split(None, 1)[1]
+        elif text.startswith("OTDSetup:MAXTime "):
+            self.state["max_time"] = text.split(None, 1)[1]
+        elif text.startswith("OTDSetup:ACQuisition "):
+            self.state["acquisition_mode"] = text.split(None, 1)[1]
+        elif text.startswith("OTDSetup:RESolution "):
+            self.state["resolution"] = text.split(None, 1)[1]
+        elif text.startswith("OTDSetup:UNITs "):
+            self.state["units"] = text.split(None, 1)[1]
+
+    def query(self, command):
+        self.queries.append(command)
+        text = command.strip()
+        if text == "STATus:ACQ?":
+            try:
+                self._last_status = next(self.statuses)
+            except StopIteration:
+                pass
+            return self._last_status
+        if callable(self.responder):
+            return self.responder(text, self)
+        return ""
+
+    def query_block(self, command):
+        self.block_queries.append(command)
+        return self.blocks.get(command.strip(), b"")

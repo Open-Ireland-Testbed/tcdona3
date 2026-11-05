@@ -50,6 +50,7 @@ _try_import("monitor", ["Monitor", "RoadmMonitor"])
 # OSA and related
 _try_import("osa", ["OSA"])
 # Other instruments
+_try_import("mts4000", ["MTS4000", "MTS4000Error", "OTDRConfig"])
 # The class names, and the names this file always meant to export as aliases.
 _try_import("yokogawa", ["YokogawaOSA"], {"Yokogawa": "YokogawaOSA"})
 _try_import("quadflex", ["QFlex"], {"QuadFlex": "QFlex"})
