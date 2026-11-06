@@ -60,8 +60,8 @@ device is being put back, Ctrl-C is held until it is done.
      - After ``--acquire``, in the same session, stops an acquisition still running and writes back the
        settings read at the start: the wavelength and its pulse, the pulse of the wavelength it selected
        (pulses are set per wavelength), the range (or auto range) and the acquisition time, whatever the flags
-       (in auto mode the instrument may choose pulse and range itself). It reads them again and fails when
-       they differ. When one of them cannot be read at the start, it does not acquire. Ctrl-C ends the
+       (in auto mode the instrument may choose pulse and range itself). It checks each one as it is written back
+       and fails when one differs from the start. When one of them cannot be read at the start, it does not acquire. Ctrl-C ends the
        acquisition.
 
 Usage::

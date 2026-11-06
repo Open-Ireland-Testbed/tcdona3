@@ -16,7 +16,8 @@ With ``--acquire`` it applies the requested settings, runs one acquisition, save
 if it is still running and writes back the settings read at the start: the wavelength and its pulse,
 the pulse of the wavelength it selected (pulses are set per wavelength), the range or auto range and
 the acquisition time, whatever the flags (an acquisition in auto mode may choose its own pulse and
-range).  It then reads them again and fails when they differ from the start.  This also happens when a
+range).  It checks each one as it is written back and reads them all again at the end, and fails when
+one differs from the start.  This also happens when a
 check fails or the run is interrupted with Ctrl-C.  Ctrl-C during the acquisition ends it; Ctrl-C during
 the restore is held until the restore is done.  When one of these settings cannot be read at the start,
 it does not acquire.  The script exits non-zero when a check or the restore fails.  Measured values are
@@ -182,10 +183,17 @@ def stop_if_running(device, checks):
 
 def restore(device, checks, plan, start):
     for settings in plan:
+        name = "restore: %s written back" % ", ".join(sorted(settings))
         try:
-            device.configure(**settings)
+            written = device.configure(**settings)
         except (MTS4000Error, OSError, ValueError) as exc:
-            checks.check("restore: %s written back" % ", ".join(sorted(settings)), False, str(exc))
+            checks.check(name, False, str(exc))
+            continue
+        # configure() reads the settings back with the wavelength it selected, so this is the only time
+        # the pulse of the wavelength selected for the acquisition can be checked.
+        different = [key for key in ("wavelength", "pulse_width")
+                     if key in settings and getattr(written, key) != settings[key]]
+        checks.check(name, different == [], different)
     try:
         different = restored_differences(start, device.get_config())
     except (MTS4000Error, OSError, ValueError) as exc:

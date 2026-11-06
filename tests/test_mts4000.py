@@ -706,3 +706,28 @@ def test_smoke_script_fails_when_the_settings_do_not_read_back_as_at_the_start(m
     _fake_instrument(monkeypatch, statuses=("IN_PROGRESS", "STOPPED"), transport=_IgnoresTheRange)
     assert _smoke_module().main(["192.0.2.10", "--acquire", "--output", str(tmp_path)]) == 1
     assert "restore: settings back to those at the start" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("function,value", [
+    (mts4000.normalise_pulse_width, float("nan")), (mts4000.normalise_pulse_width, float("inf")),
+    (mts4000.normalise_wavelength, float("inf")), (mts4000.normalise_wavelength, float("nan")),
+    (mts4000._normalise_acquisition_time, float("inf")), (mts4000._normalise_acquisition_time, float("nan")),
+])
+def test_non_finite_numbers_are_refused_as_value_errors(function, value):
+    with pytest.raises(ValueError):
+        function(value)
+
+
+def test_smoke_script_checks_the_pulse_of_the_selected_wavelength_as_it_is_put_back(monkeypatch, tmp_path, capsys):
+    class _Keeps1550Pulse(_PerWavelengthPulses):
+        """Ignores a write of the 1550 nm pulse once the acquisition has run."""
+
+        def _track(self, command):
+            if command.strip() == "OTDSetup:LPULse L1550,P2US" and "KEY BEGinacq" in self.sent:
+                command = "OTDSetup:LASer L1550"
+            _PerWavelengthPulses._track(self, command)
+
+    _fake_instrument(monkeypatch, statuses=("IN_PROGRESS", "STOPPED"), transport=_Keeps1550Pulse)
+    argv = ["192.0.2.10", "--acquire", "--wavelength", "1550", "--pulse", "100ns", "--output", str(tmp_path)]
+    assert _smoke_module().main(argv) == 1
+    assert "[FAIL] restore: pulse_width, wavelength written back" in capsys.readouterr().out

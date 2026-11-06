@@ -188,7 +188,7 @@ def normalise_wavelength(value: Any) -> str:
             keys = [normalise_wavelength(p) for p in parts]
             return "_".join(k[1:] for k in keys).join(("L", ""))
         value = float(text)
-    lam = int(round(float(value)))
+    lam = int(round(_finite(value, "wavelength")))
     if lam not in _WAVELENGTHS:
         allowed = ", ".join(str(k) for k in sorted(_WAVELENGTHS))
         raise ValueError(f"unsupported wavelength {value!r}; expected one of {allowed} nm")
@@ -212,7 +212,7 @@ def normalise_pulse_width(value: Any) -> str:
         unit = match.group(2) or "NS"
         ns = amount * (1000.0 if unit == "US" else 1.0)
     else:
-        ns = float(value)
+        ns = _finite(value, "pulse_width")
     nearest = min(_PULSES, key=lambda k: abs(k - ns))
     if abs(nearest - ns) > 1e-9 * max(1.0, nearest):
         raise ValueError(
@@ -1417,7 +1417,7 @@ def _normalise_acquisition_time(value: Union[float, str]) -> str:
         if text in {"realtime", "real-time", "real"}:
             return "-1"
         value = float(text)
-    seconds = float(value)
+    seconds = _finite(value, "acquisition_time_s")
     if seconds in (-2.0, -1.0):
         # What OTDSetup:MAXTime? reports for auto/realtime, so that a value read
         # with get_config() can be written back.
