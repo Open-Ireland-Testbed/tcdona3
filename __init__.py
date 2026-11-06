@@ -1,4 +1,4 @@
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 # tcdona3/__init__.py
 """
 Top-level package for the Open Ireland Optical Testbed v3 control code.
@@ -50,6 +50,7 @@ _try_import("monitor", ["Monitor", "RoadmMonitor"])
 # OSA and related
 _try_import("osa", ["OSA"])
 # Other instruments
+_try_import("mts4000", ["MTS4000", "MTS4000Error", "OTDRConfig"])
 # The class names, and the names this file always meant to export as aliases.
 _try_import("yokogawa", ["YokogawaOSA"], {"Yokogawa": "YokogawaOSA"})
 _try_import("quadflex", ["QFlex"], {"QuadFlex": "QFlex"})

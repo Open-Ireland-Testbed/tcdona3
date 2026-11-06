@@ -26,7 +26,7 @@ INTENDED_EXPORTS = {
 }
 
 #: The modules this work maintains; they must parse and use nothing newer than Python 3.6.
-MAINTAINED = ["lumentum.py", "ila.py", "yokogawa.py", "teraflex_paramiko.py", "__init__.py"]
+MAINTAINED = ["lumentum.py", "ila.py", "yokogawa.py", "teraflex_paramiko.py", "mts4000.py", "utils.py", "__init__.py"]
 
 
 def _class(module, name):

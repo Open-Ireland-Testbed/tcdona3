@@ -39,6 +39,17 @@ LUMENTUM_DEMUX_MONITOR_PORT = 3101
 #: Attempts of an idempotent WSS RPC whose reply timed out (with ``reconnect=True``), and the wait between them [s].
 RPC_TIMEOUT_ATTEMPTS = 3
 RPC_TIMEOUT_RETRY_WAIT_S = 10.0
+#: Target gains [dB] the EDFAs accept in constant-gain mode, (minimum, maximum) per module: the device's ranges.
+LUMENTUM_EDFA_GAIN_RANGES = {"booster": (4.0, 27.0), "preamp": (10.0, 30.5)}
+#: The sources :meth:`Lumentum.fetch_all_telemetry` can read, and the other names it accepts for them.
+LUMENTUM_TELEMETRY_SOURCES = ("connections", "monitor", "edfa")
+_TELEMETRY_ALIASES = {
+    "connection": "connections",
+    "monitored-channels": "monitor",
+    "monitored_channels": "monitor",
+    "monitored": "monitor",
+    "edfas": "edfa",
+}
 
 ip_map = {
     "roadm_1": "10.10.10.38",
@@ -74,6 +85,44 @@ def _strip_prefixes(node):
     return {key.split(":", 1)[-1]: value for key, value in (node or {}).items()}
 
 
+def _edfa_gain_limits(gain_limits):
+    """The target-gain limits a :class:`Lumentum` checks: the device's ranges, narrowed by ``gain_limits``
+    (``{"booster": (minimum, maximum), "preamp": (minimum, maximum)}`` in dB; a module may be left out)."""
+    limits = dict(LUMENTUM_EDFA_GAIN_RANGES)
+    for module, bounds in (gain_limits or {}).items():
+        if module not in limits:
+            raise ValueError("gain_limits: unknown EDFA module %r; use 'booster' or 'preamp'" % (module,))
+        try:
+            low, high = (float(bound) for bound in bounds)
+        except (TypeError, ValueError):
+            raise ValueError("gain_limits[%r] must be a (minimum, maximum) pair in dB, not %r" % (module, bounds))
+        device_low, device_high = LUMENTUM_EDFA_GAIN_RANGES[module]
+        if not device_low <= low <= high <= device_high:
+            raise ValueError("gain_limits[%r] = (%s, %s) must lie within the device's range [%s, %s] dB"
+                             % (module, low, high, device_low, device_high))
+        limits[module] = (low, high)
+    return limits
+
+
+def _telemetry_sources(fetch):
+    """The sources named by ``fetch`` (see :meth:`Lumentum.fetch_all_telemetry`), checked before any RPC."""
+    names = [fetch] if isinstance(fetch, str) else list(fetch)
+    sources = set()
+    for name in names:
+        key = str(name).strip().lower()
+        key = _TELEMETRY_ALIASES.get(key, key)
+        if key == "all":
+            sources.update(LUMENTUM_TELEMETRY_SOURCES)
+        elif key in LUMENTUM_TELEMETRY_SOURCES:
+            sources.add(key)
+        else:
+            raise ValueError("Unknown fetch value %r; use 'all' or any of %s"
+                             % (name, ", ".join(repr(s) for s in LUMENTUM_TELEMETRY_SOURCES)))
+    if not sources:
+        raise ValueError("fetch names no telemetry source")
+    return sources
+
+
 class Lumentum(object):
     """
     A class used to interact with Lumentum ROADMs. The class provides methods to configure EDFA, WSS, and flex-grid connections. It also checks if the user is authorized to use the device. If the user is not authorized, it raises an Exception and does not connect to the device.
@@ -90,13 +139,20 @@ class Lumentum(object):
         an error propagates at once, as it always did.
     :type reconnect: bool
 
+    :param gain_limits: Optional narrower target-gain limits for constant-gain mode, e.g.
+        ``{"booster": (7.0, 27.0), "preamp": (11.0, 30.0)}``. A target gain is always checked, before any EDFA
+        is taken out of service, against these limits or, without them, the device's ranges (booster 4-27 dB,
+        preamp 10-30.5 dB, :data:`LUMENTUM_EDFA_GAIN_RANGES`).
+    :type gain_limits: dict
+
     The driver can be used as a context manager; :meth:`close` ends the session.
     """
 
-    def __init__(self, roadm_name, DEBUG=False, timeout=None, reconnect=False):
+    def __init__(self, roadm_name, DEBUG=False, timeout=None, reconnect=False, gain_limits=None):
 
         if roadm_name not in ip_map:
             raise ValueError("Invalid roadm_name")
+        self.gain_limits = _edfa_gain_limits(gain_limits)
 
         if not check_patch_owners([(roadm_name + "_p1", roadm_name + "_line")]):
             raise Exception("You are not authorized to use this device")
@@ -121,6 +177,8 @@ class Lumentum(object):
             print("ROADM " + roadm_name + " initialized...!")
         self.edfa_info = {"booster": {}, "preamp": {}}
         self.wss_connections = {"mux": {}, "demux": {}}
+        # Filled by wss_get_monitored_channels; exists before the first read, like the caches above.
+        self.monitored_channels = {"mux": {}, "demux": {}}
         self.port_info = {}
         self.mux_additional_attn = 0
         self.demux_additional_attn = 0
@@ -313,6 +371,29 @@ class Lumentum(object):
             print(e)
             raise RuntimeError(e)
 
+    def fetch_all_telemetry(self, fetch="all"):
+        """
+        Read the WSS connections, the OCM monitored channels and the EDFA states in one call, or only some of
+        them: one NETCONF get per source, so 1-3 RPCs per sample.
+
+        Each source is read by its own method, so the values are the same as theirs:
+        :meth:`wss_get_connections`, :meth:`wss_get_monitored_channels` and :meth:`get_edfa_info`.
+
+        :param fetch: ``'all'`` (default), one of ``'connections'``, ``'monitor'`` (or ``'monitored-channels'``)
+            and ``'edfa'`` (or ``'edfas'``), or a list of them; case does not matter. An unknown name raises
+            ``ValueError`` before any RPC.
+        :type fetch: str or list
+
+        :return: ``(wss_connections, monitored_channels, edfa_info)``; a source that was not requested is
+            ``None``, so a value is never one left over from an earlier read.
+        :rtype: tuple
+        """
+        sources = _telemetry_sources(fetch)
+        connections = self.wss_get_connections() if "connections" in sources else None
+        monitored = self.wss_get_monitored_channels() if "monitor" in sources else None
+        edfas = self.get_edfa_info() if "edfa" in sources else None
+        return connections, monitored, edfas
+
     def __edfa_los_mode(self, edfa_module, los_shutdown):
 
         if los_shutdown not in ["true", "false"]:
@@ -372,6 +453,20 @@ class Lumentum(object):
                 print(e)
                 raise SystemError("Encountered the above RPC error!")
 
+    def _validate_target_gain(self, edfa_module, target_gain):
+        """Refuse a constant-gain target outside the instance's limits (the device's ranges unless narrowed with
+        ``gain_limits``), before anything is written."""
+        limits = getattr(self, "gain_limits", None) or LUMENTUM_EDFA_GAIN_RANGES
+        minimum, maximum = limits[edfa_module]
+        try:
+            gain = float(target_gain)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("target_gain must be a numeric value") from exc
+        if not minimum <= gain <= maximum:
+            raise ValueError(
+                f"{edfa_module} target_gain must be between {minimum} and "
+                f"{maximum} dB; received {target_gain}")
+
     def edfa_config(
         self,
         edfa_module,
@@ -397,7 +492,7 @@ class Lumentum(object):
         :param gain_switch_mode: The gain switch mode to be set (either 'low-gain' or 'high-gain'). This setting only applies if setting the EDFA module in 'constant-power' mode.
         :type gain_switch_mode: str
 
-        :param target_gain: The target gain to be set. This setting only applies if setting the EDFA module in 'constant-gain' mode. For boosters, the target gain can be set in the range of [4.0, 27.0] dB. For preamps, the target gain can be set in the range of [10.0, 30.5] dB.
+        :param target_gain: The target gain to be set. This setting only applies if setting the EDFA module in 'constant-gain' mode. For boosters, the target gain can be set in the range of [4.0, 27.0] dB. For preamps, the target gain can be set in the range of [10.0, 30.5] dB. A value outside this range, or outside the narrower ``gain_limits`` given to the constructor, raises ValueError before anything is written.
         :type target_gain: float
 
         :param target_power: The target power to be set. This setting only applies if setting the EDFA module in 'constant-power' mode. For boosters, the target power can be set in the range of [3.0, 23.0] dBm. For preamps, the target power can be set in the range of [-3.0, +22.0] dBm.
@@ -413,6 +508,8 @@ class Lumentum(object):
             target_module_id = 1
         elif edfa_module == "preamp":
             target_module_id = 2
+        if control_mode == "constant-gain":
+            self._validate_target_gain(edfa_module, target_gain)
         rpc_reply = 0
 
         target_edfa_info = self.get_edfa_info()[edfa_module]
@@ -614,6 +711,7 @@ class Lumentum(object):
         rpc_reply = self.m.edit_config(target="running", config=command)
 
     def set_mux_constant_gain(self, target_gain, target_gain_tilt=0.0):
+        self._validate_target_gain("booster", target_gain)
         self.__set_mux_offline()
         time.sleep(0.5)
         target_module_id = 1
@@ -633,6 +731,7 @@ class Lumentum(object):
         rpc_reply = self.m.edit_config(target="running", config=command)
 
     def set_demux_constant_gain(self, target_gain, target_gain_tilt=0.0):
+        self._validate_target_gain("preamp", target_gain)
         self.__set_demux_offline()
         time.sleep(0.5)
         target_module_id = 2

@@ -1,7 +1,7 @@
 import mysql.connector
 import os
 import math
-import pkg_resources
+import sys
 import pandas as pd
 import warnings
 import functools
@@ -44,7 +44,10 @@ def get_freq_range(
     return int(start_freq), int(central_freq), int(end_freq)
 
 
-def check_patch_owners(patch_list):
+_BOOKING_CHECK_DISABLED_VALUES = {"0", "false", "no", "off"}
+
+
+def check_patch_owners(patch_list, enabled=None):
     """
     Check if all devices in the patch list are either unbooked or booked by the current user.
     Allows shared bookings (device booked by multiple users including current user).
@@ -52,12 +55,35 @@ def check_patch_owners(patch_list):
     - TCDONA3_BOOKING_USER: single override username
     - TCDONA3_BOOKING_ALIASES: comma-separated extra usernames
 
+    The check is enabled by default.  Set ``enabled=False`` (or set
+    ``TCDONA3_BOOKING_CHECK`` to one of ``0``, ``false``, ``no`` or ``off``)
+    to skip the provisioning-database query, e.g. outside the lab where the
+    database cannot be reached.  A skipped check prints a warning on stderr
+    every time, naming the devices nobody checked.
+
     :param patch_list: A list of patches, where each patch is a tuple/list of device names.
     :type patch_list: list
+
+    :param enabled: Whether to run the booking check.  ``None`` reads
+        ``TCDONA3_BOOKING_CHECK`` (default: enabled); ``True`` runs it whatever
+        the variable says.
+    :type enabled: bool or None
 
     :return: True if all devices are unbooked or booked by current user, False otherwise.
     :rtype: bool
     """
+    if enabled is None:
+        setting = os.getenv("TCDONA3_BOOKING_CHECK", "1")
+        enabled = setting.strip().lower() not in _BOOKING_CHECK_DISABLED_VALUES
+        reason = "TCDONA3_BOOKING_CHECK=%s" % setting
+    else:
+        reason = "check_patch_owners(..., enabled=False)"
+    if not enabled:
+        devices = sorted({device for patch in patch_list for device in patch if device != "NULL"})
+        print("[CHECK_OWNERS] Booking check skipped (%s): nobody checked that you may use %s."
+              % (reason, ", ".join(devices) or "these devices"), file=sys.stderr)
+        return True
+
     allowed_users = set()
 
     unix_user = os.getenv("SUDO_USER") or os.getenv("USER")
@@ -131,44 +157,6 @@ def check_patch_owners(patch_list):
         cursor.close()
         conn.close()
 
-    # Query active_bookings with current user or unallocated devices
-    # cursor.execute(
-    #     f"""
-    #     SELECT device_id FROM active_bookings
-    #     WHERE device_id IN (
-    #         SELECT id FROM device_table WHERE deviceName IN ({format_strings})
-    #     ) AND (user_id = %s OR user_id IS NULL)
-    #     """,
-    #     tuple(all_devices) + (user_id,),
-    # )
-    # owned_or_unallocated_device_ids = {row[0] for row in cursor.fetchall()}
-
-    # # Get name to ID mapping (same as earlier)
-    # cursor.execute(
-    #     "SELECT id, deviceName FROM device_table WHERE deviceName IN (%s)" % format_strings,
-    #     tuple(all_devices),
-    # )
-    # device_rows = cursor.fetchall()
-    # name_to_id = {name: dev_id for dev_id, name in device_rows}
-
-    # missing_devices = list(all_devices - set(name_to_id.keys()))
-    # conflict_devices = [
-    #     name for name, dev_id in name_to_id.items() if dev_id not in owned_or_unallocated_device_ids
-    # ]
-
-    # cursor.close()
-    # conn.close()
-
-    # if missing_devices:
-    #     print("[CHECK_OWNERS] Unallocated devices:", missing_devices)
-    # if conflict_devices:
-    #     print(
-    #         "[CHECK_OWNERS] Devices booked by another user or blocked:",
-    #         conflict_devices,
-    #     )
-
-    # return not conflict_devices
-
 
 def db_to_abs(db_value):
     """Function to convert dB to absolute value
@@ -208,8 +196,10 @@ def abs_to_dbm(absolute_value):
 
 
 def load_csv_with_pandas(filename):
-    # Get the path to the CSV file within the installed package
-    csv_path = pkg_resources.resource_filename("tcdona3", filename)
+    # The CSV files ship inside the package, next to this module. (This used
+    # pkg_resources, which needs setuptools at run time: without it every
+    # driver importing tcdona3.utils was silently left out of `import tcdona3`.)
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
 
     # Load the CSV file with pandas
     df = pd.read_csv(csv_path)

@@ -1,0 +1,36 @@
+# For `pip install .` / `pip install -e .` from this checkout (Python 3.7+, where setuptools >= 64 is
+# available). The lab hosts ol02 (Python 3.6) and ol4 still install from the setup.py kept outside this
+# repository (see DEPLOY.MD); the code itself runs on Python 3.6.
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tcdona3"
+dynamic = ["version"]
+description = "Open Ireland optical testbed v3 control code"
+readme = "README.md"
+requires-python = ">=3.6"
+dependencies = [
+    "ncclient",
+    "lxml",
+    "xmltodict",
+    "paramiko>=3,<5",
+    "pyvisa",
+    "numpy",
+    "matplotlib",
+    "pandas",
+    "mysql-connector-python",
+    "pyserial",
+    "pyusb",
+]
+
+[tool.setuptools]
+packages = ["tcdona3", "tcdona3.polatis", "tcdona3.ApexOSA"]
+package-dir = { "tcdona3" = ".", "tcdona3.polatis" = "polatis", "tcdona3.ApexOSA" = "ApexOSA" }
+
+[tool.setuptools.dynamic]
+version = { attr = "tcdona3.__version__" }
+
+[tool.setuptools.package-data]
+tcdona3 = ["cassini_attributes.csv"]

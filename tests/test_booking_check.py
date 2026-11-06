@@ -104,3 +104,42 @@ def test_the_database_settings_come_from_the_environment(database, monkeypatch):
     monkeypatch.setenv("DB_HOST", "db.example")
     utils.check_patch_owners([("roadm_1_p1", "roadm_1_line")])
     assert connections[0][0]["host"] == "db.example"
+
+
+# ------------------------------------------------------------------------------------------- opt-out (1.2.0)
+@pytest.mark.parametrize("setting", ["0", "false", "No", " OFF "])
+def test_the_check_can_be_switched_off_by_the_environment_and_says_so(database, monkeypatch, capsys, setting):
+    executed, connections, _ = database
+    monkeypatch.setenv("TCDONA3_BOOKING_CHECK", setting)
+    assert utils.check_patch_owners([("roadm_1_p1", "roadm_1_line")]) is True
+    assert executed == [] and connections == []
+    warning = capsys.readouterr().err
+    assert "Booking check skipped" in warning and "TCDONA3_BOOKING_CHECK" in warning
+    assert "roadm_1_line, roadm_1_p1" in warning
+
+
+def test_the_check_can_be_switched_off_in_code_and_says_so(database, monkeypatch, capsys):
+    executed, _, _ = database
+    monkeypatch.delenv("TCDONA3_BOOKING_CHECK", raising=False)
+    assert utils.check_patch_owners([("ila_1_fwd", "ila_1_bck")], enabled=False) is True
+    assert executed == []
+    assert "enabled=False" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("setting", [None, "1", "yes", "anything else"])
+def test_the_check_runs_unless_switched_off(database, monkeypatch, setting):
+    executed, _, conflicts = database
+    if setting is None:
+        monkeypatch.delenv("TCDONA3_BOOKING_CHECK", raising=False)
+    else:
+        monkeypatch.setenv("TCDONA3_BOOKING_CHECK", setting)
+    conflicts.append(("roadm_1_p1", "bob"))
+    assert utils.check_patch_owners([("roadm_1_p1", "roadm_1_line")]) is False
+    assert len(executed) == 1
+
+
+def test_enabled_true_runs_the_check_whatever_the_environment_says(database, monkeypatch):
+    executed, _, _ = database
+    monkeypatch.setenv("TCDONA3_BOOKING_CHECK", "0")
+    assert utils.check_patch_owners([("roadm_1_p1", "roadm_1_line")], enabled=True) is True
+    assert len(executed) == 1
