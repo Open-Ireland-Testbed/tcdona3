@@ -39,6 +39,17 @@ LUMENTUM_DEMUX_MONITOR_PORT = 3101
 #: Attempts of an idempotent WSS RPC whose reply timed out (with ``reconnect=True``), and the wait between them [s].
 RPC_TIMEOUT_ATTEMPTS = 3
 RPC_TIMEOUT_RETRY_WAIT_S = 10.0
+#: Target gains [dB] the EDFAs accept in constant-gain mode, (minimum, maximum) per module: the device's ranges.
+LUMENTUM_EDFA_GAIN_RANGES = {"booster": (4.0, 27.0), "preamp": (10.0, 30.5)}
+#: The sources :meth:`Lumentum.fetch_all_telemetry` can read, and the other names it accepts for them.
+LUMENTUM_TELEMETRY_SOURCES = ("connections", "monitor", "edfa")
+_TELEMETRY_ALIASES = {
+    "connection": "connections",
+    "monitored-channels": "monitor",
+    "monitored_channels": "monitor",
+    "monitored": "monitor",
+    "edfas": "edfa",
+}
 
 ip_map = {
     "roadm_1": "10.10.10.38",
@@ -74,6 +85,44 @@ def _strip_prefixes(node):
     return {key.split(":", 1)[-1]: value for key, value in (node or {}).items()}
 
 
+def _edfa_gain_limits(gain_limits):
+    """The target-gain limits a :class:`Lumentum` checks: the device's ranges, narrowed by ``gain_limits``
+    (``{"booster": (minimum, maximum), "preamp": (minimum, maximum)}`` in dB; a module may be left out)."""
+    limits = dict(LUMENTUM_EDFA_GAIN_RANGES)
+    for module, bounds in (gain_limits or {}).items():
+        if module not in limits:
+            raise ValueError("gain_limits: unknown EDFA module %r; use 'booster' or 'preamp'" % (module,))
+        try:
+            low, high = (float(bound) for bound in bounds)
+        except (TypeError, ValueError):
+            raise ValueError("gain_limits[%r] must be a (minimum, maximum) pair in dB, not %r" % (module, bounds))
+        device_low, device_high = LUMENTUM_EDFA_GAIN_RANGES[module]
+        if not device_low <= low <= high <= device_high:
+            raise ValueError("gain_limits[%r] = (%s, %s) must lie within the device's range [%s, %s] dB"
+                             % (module, low, high, device_low, device_high))
+        limits[module] = (low, high)
+    return limits
+
+
+def _telemetry_sources(fetch):
+    """The sources named by ``fetch`` (see :meth:`Lumentum.fetch_all_telemetry`), checked before any RPC."""
+    names = [fetch] if isinstance(fetch, str) else list(fetch)
+    sources = set()
+    for name in names:
+        key = str(name).strip().lower()
+        key = _TELEMETRY_ALIASES.get(key, key)
+        if key == "all":
+            sources.update(LUMENTUM_TELEMETRY_SOURCES)
+        elif key in LUMENTUM_TELEMETRY_SOURCES:
+            sources.add(key)
+        else:
+            raise ValueError("Unknown fetch value %r; use 'all' or any of %s"
+                             % (name, ", ".join(repr(s) for s in LUMENTUM_TELEMETRY_SOURCES)))
+    if not sources:
+        raise ValueError("fetch names no telemetry source")
+    return sources
+
+
 class Lumentum(object):
     """
     A class used to interact with Lumentum ROADMs. The class provides methods to configure EDFA, WSS, and flex-grid connections. It also checks if the user is authorized to use the device. If the user is not authorized, it raises an Exception and does not connect to the device.
@@ -90,13 +139,20 @@ class Lumentum(object):
         an error propagates at once, as it always did.
     :type reconnect: bool
 
+    :param gain_limits: Optional narrower target-gain limits for constant-gain mode, e.g.
+        ``{"booster": (7.0, 27.0), "preamp": (11.0, 30.0)}``. A target gain is always checked, before any EDFA
+        is taken out of service, against these limits or, without them, the device's ranges (booster 4-27 dB,
+        preamp 10-30.5 dB, :data:`LUMENTUM_EDFA_GAIN_RANGES`).
+    :type gain_limits: dict
+
     The driver can be used as a context manager; :meth:`close` ends the session.
     """
 
-    def __init__(self, roadm_name, DEBUG=False, timeout=None, reconnect=False):
+    def __init__(self, roadm_name, DEBUG=False, timeout=None, reconnect=False, gain_limits=None):
 
         if roadm_name not in ip_map:
             raise ValueError("Invalid roadm_name")
+        self.gain_limits = _edfa_gain_limits(gain_limits)
 
         if not check_patch_owners([(roadm_name + "_p1", roadm_name + "_line")]):
             raise Exception("You are not authorized to use this device")
@@ -121,9 +177,7 @@ class Lumentum(object):
             print("ROADM " + roadm_name + " initialized...!")
         self.edfa_info = {"booster": {}, "preamp": {}}
         self.wss_connections = {"mux": {}, "demux": {}}
-        # Initialised here so a partial fetch (fetch="connections"/"edfa") cannot leave the
-        # attribute undefined: fetch_all_telemetry returns it unconditionally, but only
-        # assigns it when "monitor" is among the requested sources.
+        # Filled by wss_get_monitored_channels; exists before the first read, like the caches above.
         self.monitored_channels = {"mux": {}, "demux": {}}
         self.port_info = {}
         self.mux_additional_attn = 0
@@ -317,172 +371,28 @@ class Lumentum(object):
             print(e)
             raise RuntimeError(e)
 
-    def fetch_all_telemetry(self, fetch='all'):
+    def fetch_all_telemetry(self, fetch="all"):
         """
-        Fetch selected telemetry via 1-3 NETCONF RPCs.
+        Read the WSS connections, the OCM monitored channels and the EDFA states in one call, or only some of
+        them: one NETCONF get per source, so 1-3 RPCs per sample.
 
-        Args:
-            fetch (str | list[str]): Which telemetry to fetch.  ``'all'``
-                (default) fetches all three subtrees.  Single values
-                ``'connections'``, ``'monitor'`` (alias
-                ``'monitored-channels'``), or ``'edfa'`` (alias ``'edfas'``)
-                fetch only that subtree (1 RPC).  A list such as
-                ``['connections', 'monitor']`` fetches those subtrees.
+        Each source is read by its own method, so the values are the same as theirs:
+        :meth:`wss_get_connections`, :meth:`wss_get_monitored_channels` and :meth:`get_edfa_info`.
 
-        Populates only the caches for the requested sources:
-            ``self.wss_connections`` (when ``connections`` requested),
-            ``self.monitored_channels`` (when ``monitor`` requested),
-            ``self.edfa_info`` (when ``edfa`` requested).
+        :param fetch: ``'all'`` (default), one of ``'connections'``, ``'monitor'`` (or ``'monitored-channels'``)
+            and ``'edfa'`` (or ``'edfas'``), or a list of them; case does not matter. An unknown name raises
+            ``ValueError`` before any RPC.
+        :type fetch: str or list
 
-        Returns:
-            tuple: ``(wss_connections, monitored_channels, edfa_info)``
+        :return: ``(wss_connections, monitored_channels, edfa_info)``; a source that was not requested is
+            ``None``, so a value is never one left over from an earlier read.
+        :rtype: tuple
         """
-        _ALIASES = {
-            'monitored-channels': 'monitor',
-            'monitored_channels': 'monitor',
-            'monitored': 'monitor',
-            'edfas': 'edfa',
-            'connection': 'connections',
-        }
-        _VALID = {'connections', 'monitor', 'edfa'}
-
-        def _norm(v):
-            v = str(v).strip().lower()
-            return _ALIASES.get(v, v)
-
-        if isinstance(fetch, str):
-            sources = {_norm(fetch)} if fetch.lower() != 'all' else set(_VALID)
-        else:
-            sources = {_norm(s) for s in fetch}
-
-        if fetch != 'all' and isinstance(fetch, str) and _norm(fetch) not in _VALID:
-            raise ValueError(f"Unknown fetch value {fetch!r}; expected one of {_VALID | {'all'}}")
-        unknown = sources - _VALID
-        if unknown:
-            raise ValueError(f"Unknown fetch values {unknown!r}; expected subset of {_VALID | {'all'}}")
-
-        def strip_ns(d):
-            if isinstance(d, dict):
-                return {k.split(":", 1)[-1]: strip_ns(v) for k, v in d.items()}
-            elif isinstance(d, list):
-                return [strip_ns(item) for item in d]
-            return d
-
-        def rpc_get(filter_xml):
-            raw = self.m.get(filter=('subtree', to_ele(filter_xml)))
-            return strip_ns(xmltodict.parse(raw.data_xml).get("data", {}))
-
-        conns_data = mon_data = edfa_data = None
-        try:
-            if 'connections' in sources:
-                conns_data = rpc_get(
-                    '<connections xmlns="http://www.lumentum.com/lumentum-ote-connection"/>')
-            if 'monitor' in sources:
-                mon_data = rpc_get(
-                    '<monitored-channels xmlns="http://www.lumentum.com/lumentum-ote-monitored-channel"/>')
-            if 'edfa' in sources:
-                edfa_data = rpc_get(
-                    '<edfas xmlns="http://www.lumentum.com/lumentum-ote-edfa"/>')
-        except Exception as e:
-            print("Encountered the following RPC error!")
-            print(e)
-            raise RuntimeError(e)
-
-        if conns_data is not None:
-            self.wss_connections = {"mux": {}, "demux": {}}
-            conns_node = conns_data.get("connections", {}).get("connection")
-            if conns_node:
-                connections = conns_node if isinstance(conns_node, list) else [conns_node]
-                has_mux = any("module=1" in str(c) for c in connections)
-                has_demux = any("module=2" in str(c) for c in connections)
-                for cur_conn in connections:
-                    if "module=1" in str(cur_conn) and has_mux:
-                        side = "mux"
-                    elif "module=2" in str(cur_conn) and has_demux:
-                        side = "demux"
-                    else:
-                        continue
-                    cid = len(self.wss_connections[side]) + 1
-                    key = f"conn-{cid}"
-                    st = cur_conn.get("state", {})
-                    cfg = cur_conn.get("config", {})
-                    ch_in = st.get("input-channel-attributes", {})
-                    ch_out = st.get("output-channel-attributes", {})
-                    self.wss_connections[side][key] = {
-                        "id": cid,
-                        "connection-id": str(st.get("entity-description", "")),
-                        "start-freq": float(st.get("start-freq", 0)),
-                        "end-freq": float(st.get("end-freq", 0)),
-                        "attenuation": float(st.get("attenuation", 0)),
-                        "blocked": str(st.get("blocked", "")),
-                        "input-port": int(str(cfg.get("input-port-reference", "")).split("port=", 1)[-1]) if cfg.get("input-port-reference") else 0,
-                        "input-power": float(ch_in.get("power", 0)),
-                        "input-valid-data": str(ch_in.get("valid-data", "")),
-                        "output-port": int(str(cfg.get("output-port-reference", "")).split("port=", 1)[-1]) if cfg.get("output-port-reference") else 0,
-                        "output-power": float(ch_out.get("power", 0)),
-                        "output-valid-data": str(ch_out.get("valid-data", "")),
-                    }
-
-        if mon_data is not None:
-            self.monitored_channels = {"mux": {}, "demux": {}}
-            mon_node = mon_data.get("monitored-channels", {}).get("monitored-channel")
-            if mon_node:
-                mon_list = mon_node if isinstance(mon_node, list) else [mon_node]
-                mon_mux_id = 0
-                mon_demux_id = 0
-                for cur_monchan in mon_list:
-                    monchan_str = str(cur_monchan)
-                    if "port=6201" in monchan_str:
-                        mon_mux_id += 1
-                        key = f"mon-{mon_mux_id}"
-                        st = cur_monchan.get("state", {})
-                        self.monitored_channels["mux"][key] = {
-                            "id": mon_mux_id,
-                            "power": float(st.get("power", 0)),
-                            "frequency": float(st.get("measured-frequency", 0)),
-                        }
-                    elif "port=3101" in monchan_str:
-                        mon_demux_id += 1
-                        key = f"mon-{mon_demux_id}"
-                        st = cur_monchan.get("state", {})
-                        self.monitored_channels["demux"][key] = {
-                            "id": mon_demux_id,
-                            "power": float(st.get("power", 0)),
-                            "frequency": float(st.get("measured-frequency", 0)),
-                        }
-
-        if edfa_data is not None:
-            edfas_node = edfa_data.get("edfas", {}).get("edfa")
-            if edfas_node:
-                entries = edfas_node if isinstance(edfas_node, list) else [edfas_node]
-                for idx, module in enumerate(("booster", "preamp")):
-                    if idx >= len(entries):
-                        break
-                    entry = entries[idx]
-                    cfg = strip_ns(entry.get("config", {}))
-                    st = strip_ns(entry.get("state", {}))
-                    voa = strip_ns(st.get("voas", {}).get("voa", {}))
-                    self.edfa_info[module] = {
-                        "control_mode": cfg.get("control-mode"),
-                        "maintenance_state": cfg.get("maintenance-state"),
-                        "target_power": float(cfg.get("target-power", 0)),
-                        "target_gain": float(cfg.get("target-gain", 0)),
-                        "target_gain_tilt": float(cfg.get("target-gain-tilt", 0)),
-                        "input_power": float(st.get("input-power", 0)),
-                        "output_power": float(st.get("output-power", 0)),
-                        "voa_input_power": float(voa.get("voa-input-power", 0)),
-                        "voa_output_power": float(voa.get("voa-output-power", 0)),
-                        "voa_attenuation": float(voa.get("voa-attentuation", 0)),
-                    }
-
-
-        # A partial fetch leaves the unrequested caches empty (see __init__), so report
-        # them as empty instead of raising AttributeError.
-        return (
-            self.wss_connections,
-            self.monitored_channels if 'monitor' in sources else {"mux": {}, "demux": {}},
-            self.edfa_info,
-        )
+        sources = _telemetry_sources(fetch)
+        connections = self.wss_get_connections() if "connections" in sources else None
+        monitored = self.wss_get_monitored_channels() if "monitor" in sources else None
+        edfas = self.get_edfa_info() if "edfa" in sources else None
+        return connections, monitored, edfas
 
     def __edfa_los_mode(self, edfa_module, los_shutdown):
 
@@ -544,12 +454,10 @@ class Lumentum(object):
                 raise SystemError("Encountered the above RPC error!")
 
     def _validate_target_gain(self, edfa_module, target_gain):
-        """Validate the project safety range for a constant-gain EDFA request."""
-        gain_limits = {
-            "booster": (7.0, 27.0),
-            "preamp": (11.0, 30.0),
-        }
-        minimum, maximum = gain_limits[edfa_module]
+        """Refuse a constant-gain target outside the instance's limits (the device's ranges unless narrowed with
+        ``gain_limits``), before anything is written."""
+        limits = getattr(self, "gain_limits", None) or LUMENTUM_EDFA_GAIN_RANGES
+        minimum, maximum = limits[edfa_module]
         try:
             gain = float(target_gain)
         except (TypeError, ValueError) as exc:
@@ -584,7 +492,7 @@ class Lumentum(object):
         :param gain_switch_mode: The gain switch mode to be set (either 'low-gain' or 'high-gain'). This setting only applies if setting the EDFA module in 'constant-power' mode.
         :type gain_switch_mode: str
 
-        :param target_gain: The target gain to be set. This setting only applies if setting the EDFA module in 'constant-gain' mode. Project safety limits are [7.0, 27.0] dB for boosters and [11.0, 30.0] dB for preamps.
+        :param target_gain: The target gain to be set. This setting only applies if setting the EDFA module in 'constant-gain' mode. For boosters, the target gain can be set in the range of [4.0, 27.0] dB. For preamps, the target gain can be set in the range of [10.0, 30.5] dB. A value outside this range, or outside the narrower ``gain_limits`` given to the constructor, raises ValueError before anything is written.
         :type target_gain: float
 
         :param target_power: The target power to be set. This setting only applies if setting the EDFA module in 'constant-power' mode. For boosters, the target power can be set in the range of [3.0, 23.0] dBm. For preamps, the target power can be set in the range of [-3.0, +22.0] dBm.
