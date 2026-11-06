@@ -328,3 +328,143 @@ def test_close_closes_both_sockets(device):
     device, control, data = device
     device.close()
     assert control.closed and data.closed
+
+
+# --------------------------------------------------------------------------- review follow-ups (PR #32)
+def test_normalise_pulse_width_checks_keywords_against_the_table():
+    assert mts4000.normalise_pulse_width("P1US") == "P1US"
+    with pytest.raises(ValueError):
+        mts4000.normalise_pulse_width("P7NS")
+
+
+def test_acquisition_time_read_back_can_be_written_again():
+    """get_config() reports auto/realtime as -2/-1; configure() accepts them back."""
+    assert mts4000._normalise_acquisition_time(-2.0) == "-2"
+    assert mts4000._normalise_acquisition_time("-1") == "-1"
+    with pytest.raises(ValueError):
+        mts4000._normalise_acquisition_time(-3)
+
+
+def test_decode_curve_block_refuses_non_hex():
+    with pytest.raises(mts4000.MTS4000Error):
+        mts4000.decode_curve_block(b"12G4")
+
+
+def test_otdr_config_is_a_plain_value():
+    first = mts4000.OTDRConfig(wavelength="L1550", range_km=20.0)
+    assert first == mts4000.OTDRConfig(wavelength="L1550", range_km=20.0)
+    assert first != mts4000.OTDRConfig(wavelength="L1310", range_km=20.0)
+    assert first.as_dict()["wavelength"] == "L1550"
+    assert first.as_dict()["available_lasers"] == []
+    assert "wavelength='L1550'" in repr(first)
+
+
+def test_configure_writes_nothing_when_a_value_is_refused(device):
+    device, _, data = device
+    with pytest.raises(ValueError, match="index_of_refraction"):
+        device.configure(wavelength=1550, pulse_width="100ns", index_of_refraction=2.0)
+    assert not [command for command in data.sent if command.startswith("OTDSetup:")]
+
+
+def test_configure_range_sends_manual_range_once(device):
+    device, _, data = device
+    device.configure(range_km=40, auto_range=False)
+    assert data.sent.count("OTDSetup:RAUto NO") == 1
+
+
+def test_configure_auto_range(device):
+    device, _, data = device
+    config = device.configure(auto_range=True)
+    assert "OTDSetup:RAUto YES" in data.sent
+    assert config.auto_range is True
+
+
+def test_acquire_refuses_a_result_that_is_the_previous_one(monkeypatch):
+    """The start was refused: the status stays STOPPED and the result date does not change."""
+    device, _, _ = make_device(monkeypatch, statuses=("STOPPED",))
+    with pytest.raises(mts4000.MTS4000Error, match="did not start"):
+        device.acquire(timeout=5.0, poll=0.0, start_grace=0.0)
+
+
+def test_acquire_reports_the_instrument_reason_for_a_refused_start(monkeypatch):
+    device, _, data = make_device(monkeypatch, statuses=("STOPPED",))
+
+    def responder(command, session):
+        if "KEY BEGinacq" in session.sent and command == "*ESR?":
+            return "16"
+        if command == "STATus:ERR?":
+            return "other Fiber functions are active"
+        return data_responder(command, session)
+
+    data.responder = responder
+    with pytest.raises(mts4000.MTS4000Error, match="exclusive_otdr"):
+        device.acquire(timeout=5.0, poll=0.0, start_grace=0.0)
+
+
+def test_acquire_accepts_a_result_finished_before_the_first_poll(monkeypatch):
+    device, _, data = make_device(monkeypatch, statuses=("STOPPED",))
+
+    def responder(command, session):
+        if command == "OTDResult:DATE?" and "KEY BEGinacq" in session.sent:
+            return "2026-11-06 10:00:00"
+        return data_responder(command, session)
+
+    data.responder = responder
+    result = device.acquire(timeout=5.0, poll=0.0, start_grace=0.0)
+    assert result["metadata"]["date"] == "2026-11-06 10:00:00"
+
+
+# --------------------------------------------------------------------------- the hardware smoke script
+def _smoke_module():
+    import importlib.util
+    import os
+
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hardware", "smoke_mts4000.py")
+    spec = importlib.util.spec_from_file_location("smoke_mts4000_under_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _fake_instrument(monkeypatch, statuses=None, **state):
+    """Patches the driver's sockets; returns the list of data-port transports the script opens."""
+    opened = []
+
+    def factory(host, port, timeout=10.0):
+        if port == 8000:
+            return FakeScpiTransport(responder=control_responder)
+        data = FakeScpiTransport(
+            responder=data_responder,
+            blocks={"CURve:BUFfer?": curve_payload([100, -200, 300, 0]), "OTDResult:SSOR?": b"SOR"},
+            statuses=statuses,
+        )
+        data.state.update(state)
+        opened.append(data)
+        return data
+
+    def refuse(*args, **kwargs):
+        raise mts4000.urllib.error.URLError("no http")
+
+    monkeypatch.setattr(mts4000, "_SCPISocket", factory)
+    monkeypatch.setattr(mts4000.urllib.request, "urlopen", refuse)
+    return opened
+
+
+def test_smoke_script_default_run_writes_no_setting(monkeypatch):
+    opened = _fake_instrument(monkeypatch, auto_range="YES", max_time="-2")
+    assert _smoke_module().main(["192.0.2.10"]) == 0
+    assert len(opened) == 1 and opened[0].closed
+    assert not [command for command in opened[0].sent if command.startswith("OTDSetup:")]
+    assert (opened[0].state["auto_range"], opened[0].state["max_time"]) == ("YES", "-2")
+
+
+def test_smoke_script_acquire_puts_auto_range_and_auto_time_back(monkeypatch, tmp_path):
+    opened = _fake_instrument(monkeypatch, statuses=("IN_PROGRESS", "STOPPED"), auto_range="YES",
+                              max_time="-2")
+    argv = ["192.0.2.10", "--acquire", "--range-km", "40", "--time", "10", "--output", str(tmp_path)]
+    assert _smoke_module().main(argv) == 0
+    data, = opened
+    assert data.closed
+    assert "OTDSetup:KMRange 40" in data.sent and "OTDSetup:MAXTime 10" in data.sent
+    assert (data.state["auto_range"], data.state["max_time"]) == ("YES", "-2")
+    assert sorted(path.suffix for path in tmp_path.iterdir()) == [".csv", ".json", ".sor"]

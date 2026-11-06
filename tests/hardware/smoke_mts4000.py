@@ -7,11 +7,17 @@ Usage (from the parent directory of the tcdona3 package)::
                                                     [--output zresults/smoke_mts4000] [--show-values]
 
 ``HOST`` defaults to ``$MTS4000_HOST`` or ``10.10.10.150``.  By default the script only reads the
-identity, configuration, current trace and event table; it never fires the laser.  With
-``--acquire`` it applies the requested settings, runs one acquisition, saves the ``.json`` /
-``_trace.csv`` / ``.sor`` files under ``--output`` and then puts the previous settings back (also
-when a check fails or the run is interrupted with Ctrl-C).  The script exits non-zero when a check
-or the restore fails.  Measured values are printed only with ``--show-values``.
+identity, configuration, result metadata, current trace and event table: it never fires the laser and
+writes no setting.  Connecting does switch the OTDR function on and bring the OTDR tab to the front of
+the instrument's shared screen, as every :class:`MTS4000` session does.
+
+With ``--acquire`` it applies the requested settings, runs one acquisition, saves the ``.json`` /
+``_trace.csv`` / ``.sor`` files under ``--output`` and then, in the same session, stops the acquisition
+if it is still running and puts the previous settings back (wavelength, pulse, range or auto range,
+acquisition time and mode), also when a check fails or the run is interrupted with Ctrl-C.  Ctrl-C
+during the acquisition ends it; Ctrl-C during the restore is held until the restore is done.  The
+script exits non-zero when a check or the restore fails.  Measured values are printed only with
+``--show-values``.
 """
 
 import argparse
@@ -25,8 +31,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from tcdona3.mts4000 import DEFAULT_HOST, MTS4000, MTS4000Error  # noqa: E402
 
-#: Settings put back after an acquisition.
-RESTORED = ("wavelength", "pulse_width", "range_km", "acquisition_time_s", "acquisition_mode")
+#: Settings put back after an acquisition, besides the range (manual range or auto range).
+RESTORED = ("wavelength", "pulse_width", "acquisition_time_s", "acquisition_mode")
 
 
 class Checks(object):
@@ -60,11 +66,16 @@ def interrupts_held():
 
 
 def previous_settings(config):
+    """The settings of ``config`` (an ``OTDRConfig``) as ``configure()`` arguments that put them back."""
     settings = {}
     for name in RESTORED:
         value = getattr(config, name, None)
         if value is not None:
             settings[name] = value
+    if config.auto_range:
+        settings["auto_range"] = True
+    elif config.range_km is not None:
+        settings["range_km"] = config.range_km
     return settings
 
 
@@ -80,6 +91,10 @@ def run_read_only(device, checks, args):
     checks.check("get_config: range reported", config.range_km is not None, config.range_km)
     checks.check("get_config: acquisition time reported",
                  config.acquisition_time_s is not None, config.acquisition_time_s)
+
+    metadata = device.get_result_metadata()
+    # acquire() compares this date before and after an acquisition to tell a new result from the old one.
+    checks.check("get_result_metadata: result date reported", bool(metadata.get("date")), metadata.get("date"))
 
     states = device.function_states()
     checks.check("function_states: OTDR visible", any(
@@ -120,15 +135,53 @@ def run_acquire(device, checks, args):
     return result
 
 
+def stop_if_running(device, checks):
+    """Stop an acquisition left running (after Ctrl-C or an error during it)."""
+    try:
+        if device.acquisition_status() == "IN_PROGRESS":
+            device.stop_acquisition()
+            checks.check("acquisition stopped", device.acquisition_status() != "IN_PROGRESS")
+    except (MTS4000Error, OSError) as exc:
+        checks.check("acquisition stopped", False, str(exc))
+
+
 def restore(device, checks, settings):
     if not settings:
         return
     try:
         device.configure(**settings)
-    except (MTS4000Error, ValueError) as exc:
+    except (MTS4000Error, OSError, ValueError) as exc:
         checks.check("restore: previous settings put back", False, str(exc))
     else:
         checks.check("restore: previous settings put back", True)
+
+
+def reopen(device, checks):
+    """A reply cut off by Ctrl-C or an error may still be on its way: talk on a new session."""
+    try:
+        device.close()
+        device.connect()
+    except (MTS4000Error, OSError) as exc:
+        checks.check("session opened again for the restore", False, str(exc))
+
+
+def acquire_and_restore(device, checks, args, config):
+    settings = previous_settings(config)
+    cut_off = False
+    try:
+        run_acquire(device, checks, args)
+    except KeyboardInterrupt:  # Ctrl-C ends the acquisition; the instrument is still put back below
+        checks.check("the acquisition ran to the end (interrupted)", False)
+        cut_off = True
+    except (MTS4000Error, OSError, ValueError) as exc:
+        checks.check("the acquisition ran to the end (%s: %s)" % (type(exc).__name__, exc), False)
+        cut_off = True
+    finally:
+        with interrupts_held():
+            if cut_off:
+                reopen(device, checks)
+            stop_if_running(device, checks)
+            restore(device, checks, settings)
 
 
 def main(argv=None):
@@ -147,19 +200,15 @@ def main(argv=None):
 
     checks = Checks(args.show_values)
     device = MTS4000(args.host, control_port=args.control_port)
-    settings = {}
     try:
-        with interrupts_held() as received:
-            with device:
-                checks.check("connect: data port resolved", device.data_port is not None,
-                             device.data_port)
-                config = run_read_only(device, checks, args)
-                settings = previous_settings(config)
-                if args.acquire:
-                    run_acquire(device, checks, args)
-            restore(device, checks, settings)
-            if received:
-                print("[info] interrupted: the run ended after the restore")
+        with device:
+            checks.check("connect: data port resolved", device.data_port is not None,
+                         device.data_port)
+            config = run_read_only(device, checks, args)
+            if args.acquire:
+                acquire_and_restore(device, checks, args, config)
+    except KeyboardInterrupt:  # before any setting was written: nothing to put back
+        checks.check("the test ran to the end (interrupted)", False)
     except (MTS4000Error, OSError, ValueError) as exc:
         print("[FAIL] driver error: %s" % exc)
         checks.failed.append("driver error")

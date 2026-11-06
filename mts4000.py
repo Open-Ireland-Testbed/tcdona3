@@ -48,8 +48,7 @@ Important operational notes
   ``OTDResult``, ...).
 """
 
-from __future__ import annotations
-
+import copy
 import csv
 import json
 import re
@@ -57,9 +56,8 @@ import socket
 import time
 import urllib.error
 import urllib.request
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -195,11 +193,8 @@ def normalise_pulse_width(value: Any) -> str:
         raise ValueError("pulse_width is required")
     if isinstance(value, str):
         text = value.strip().upper().replace(" ", "")
-        if text.startswith("P") and text[1:].replace(".", "").isdigit() is False:
-            # already a keyword such as P200NS / P1US
-            if re.fullmatch(r"P\d+(\.\d+)?(NS|US)", text):
-                return text
-        match = re.fullmatch(r"(\d+(?:\.\d+)?)(NS|US)?", text)
+        # A keyword such as P200NS / P1US is checked against the table like any other value.
+        match = re.fullmatch(r"P?(\d+(?:\.\d+)?)(NS|US)?", text)
         if not match:
             raise ValueError(f"cannot parse pulse width {value!r}")
         amount = float(match.group(1))
@@ -291,7 +286,7 @@ class _SCPISocket:
         self.host = host
         self.port = port
         self.timeout = timeout
-        self._sock: socket.socket | None = None
+        self._sock: Optional[socket.socket] = None
         self._buf = b""
 
     def connect(self) -> "_SCPISocket":
@@ -389,16 +384,14 @@ def decode_curve_block(payload: bytes) -> np.ndarray:
         raise MTS4000Error(
             f"curve buffer length {len(payload)} is not a multiple of 4"
         )
-    text = payload.decode("ascii")
-    raw = np.empty(len(text) // 4, dtype=np.int16)
-    for i in range(raw.size):
-        raw[i] = int.from_bytes(
-            bytes.fromhex(text[4 * i : 4 * i + 4]), "big", signed=True
-        )
-    return raw
+    try:
+        big_endian = np.frombuffer(bytes.fromhex(payload.decode("ascii")), dtype=">i2")
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise MTS4000Error(f"curve buffer is not ASCII hex: {exc}") from exc
+    return big_endian.astype(np.int16)
 
 
-def parse_event_table(header: str, lines: Iterable[str]) -> list[dict[str, Any]]:
+def parse_event_table(header: str, lines: Iterable[str]) -> List[Dict[str, Any]]:
     """Parse the OTDR event table into canonical dictionaries.
 
     The device header omits the event-name column, so a row such as::
@@ -411,14 +404,14 @@ def parse_event_table(header: str, lines: Iterable[str]) -> list[dict[str, Any]]
     fallback is kept for firmware that does not emit the name column.
     """
     header_fields = [h.strip() for h in next(csv.reader([header]))] if header else []
-    events: list[dict[str, Any]] = []
+    events: List[Dict[str, Any]] = []
     for line in lines:
         if not line or not line.strip():
             continue
         fields = [f.strip() for f in next(csv.reader([line]))]
         # Some firmware prefixes values with '~' as a display marker.
         fields = [f.lstrip("~").strip() for f in fields]
-        row: dict[str, Any] = {"raw": line.strip()}
+        row: Dict[str, Any] = {"raw": line.strip()}
         if len(fields) >= 9:
             for idx, name in enumerate(_EVENT_COLUMNS):
                 value = fields[idx]
@@ -456,7 +449,7 @@ def parse_event_table(header: str, lines: Iterable[str]) -> list[dict[str, Any]]
     return events
 
 
-def _maybe_float(text: str) -> float | None:
+def _maybe_float(text: str) -> Optional[float]:
     text = text.strip()
     if text in {"", "-", "~"}:
         return None
@@ -466,11 +459,11 @@ def _maybe_float(text: str) -> float | None:
         return text
 
 
-def _parse_resolution(text: str) -> dict[str, Any] | None:
+def _parse_resolution(text: str) -> Optional[Dict[str, Any]]:
     if not text:
         return None
     parts = [p.strip() for p in text.split(",")]
-    result: dict[str, Any] = {"mode": parts[0] if parts else None, "raw": text}
+    result: Dict[str, Any] = {"mode": parts[0] if parts else None, "raw": text}
     if len(parts) > 1:
         result["value_m"] = _maybe_float(parts[1])
     return result
@@ -479,24 +472,81 @@ def _parse_resolution(text: str) -> dict[str, Any] | None:
 # --------------------------------------------------------------------------- #
 # main driver
 # --------------------------------------------------------------------------- #
-@dataclass
-class OTDRConfig:
-    """Snapshot of the OTDR acquisition settings."""
+class OTDRConfig(object):
+    """Snapshot of the OTDR acquisition settings.
 
-    acquisition_mode: str | None = None
-    wavelength: str | None = None
-    available_lasers: list[dict[str, Any]] = field(default_factory=list)
-    pulse_width: str | None = None
-    range_km: float | None = None
-    auto_range: bool | None = None
-    resolution: dict[str, Any] | None = None
-    acquisition_time_s: float | None = None
-    short_acquisition: bool | None = None
-    index_of_refraction: dict[str, float] = field(default_factory=dict)
-    units: str | None = None
-    splice_detection: int | None = None
-    reflectance_detection: int | None = None
-    end_of_fiber: int | None = None
+    A plain class rather than a dataclass, so that the module runs on Python 3.6 (ol02); :meth:`as_dict`
+    stands for ``dataclasses.asdict``.
+    """
+
+    FIELDS = (
+        "acquisition_mode",
+        "wavelength",
+        "available_lasers",
+        "pulse_width",
+        "range_km",
+        "auto_range",
+        "resolution",
+        "acquisition_time_s",
+        "short_acquisition",
+        "index_of_refraction",
+        "units",
+        "splice_detection",
+        "reflectance_detection",
+        "end_of_fiber",
+    )
+
+    def __init__(
+        self,
+        acquisition_mode: Optional[str] = None,
+        wavelength: Optional[str] = None,
+        available_lasers: Optional[List[Dict[str, Any]]] = None,
+        pulse_width: Optional[str] = None,
+        range_km: Optional[float] = None,
+        auto_range: Optional[bool] = None,
+        resolution: Optional[Dict[str, Any]] = None,
+        acquisition_time_s: Optional[float] = None,
+        short_acquisition: Optional[bool] = None,
+        index_of_refraction: Optional[Dict[str, float]] = None,
+        units: Optional[str] = None,
+        splice_detection: Optional[int] = None,
+        reflectance_detection: Optional[int] = None,
+        end_of_fiber: Optional[int] = None,
+    ):
+        self.acquisition_mode = acquisition_mode
+        self.wavelength = wavelength
+        self.available_lasers = list(available_lasers or [])
+        self.pulse_width = pulse_width
+        self.range_km = range_km
+        self.auto_range = auto_range
+        self.resolution = resolution
+        self.acquisition_time_s = acquisition_time_s
+        self.short_acquisition = short_acquisition
+        self.index_of_refraction = dict(index_of_refraction or {})
+        self.units = units
+        self.splice_detection = splice_detection
+        self.reflectance_detection = reflectance_detection
+        self.end_of_fiber = end_of_fiber
+
+    def as_dict(self) -> Dict[str, Any]:
+        """The settings as a dictionary (a deep copy), like ``dataclasses.asdict``."""
+        return {name: copy.deepcopy(getattr(self, name)) for name in self.FIELDS}
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, OTDRConfig):
+            return NotImplemented
+        return self.as_dict() == other.as_dict()
+
+    def __ne__(self, other: object) -> bool:
+        equal = self.__eq__(other)
+        return equal if equal is NotImplemented else not equal
+
+    __hash__ = None  # mutable, like a dataclass with eq=True
+
+    def __repr__(self) -> str:
+        return "OTDRConfig(%s)" % ", ".join(
+            "%s=%r" % (name, getattr(self, name)) for name in self.FIELDS
+        )
 
 
 class MTS4000:
@@ -507,7 +557,7 @@ class MTS4000:
         host: str = DEFAULT_HOST,
         *,
         control_port: int = CONTROL_PORT,
-        module_position: str | None = None,
+        module_position: Optional[str] = None,
         function: str = OTDR_FUNCTION,
         timeout: float = 10.0,
         settle_s: float = 0.4,
@@ -519,10 +569,10 @@ class MTS4000:
         self.function = function
         self.timeout = timeout
         self.settle_s = settle_s
-        self.data_port: int | None = None
-        self.scpi_idn: str | None = None
-        self._ctl: _SCPISocket | None = None
-        self._data: _SCPISocket | None = None
+        self.data_port: Optional[int] = None
+        self.scpi_idn: Optional[str] = None
+        self._ctl: Optional[_SCPISocket] = None
+        self._data: Optional[_SCPISocket] = None
         if auto_connect:
             self.connect()
 
@@ -554,7 +604,7 @@ class MTS4000:
 
     def _discover_position(self) -> str:
         assert self._ctl is not None
-        first_error: Exception | None = None
+        first_error: Optional[Exception] = None
         for position in _POSITIONS:
             try:
                 functions = self._ctl.query(f"MOD:FUNC:LIST?{position}")
@@ -615,7 +665,7 @@ class MTS4000:
         """Send a query that returns an IEEE-488.2 definite-length block."""
         return self.data.query_block(command)
 
-    def _safe_query(self, command: str) -> str | None:
+    def _safe_query(self, command: str) -> Optional[str]:
         """Query an optional setting, tolerating unsupported commands.
 
         An unsupported/empty reply sets the SCPI event-status error bit, so the
@@ -656,11 +706,11 @@ class MTS4000:
             )
 
     # -- identity ----------------------------------------------------------
-    def identify(self) -> dict[str, Any]:
+    def identify(self) -> Dict[str, Any]:
         """Return SCPI identity plus the instrument's HTTP inventory."""
         self._require_data()
         idn_parts = [p.strip() for p in (self.scpi_idn or "").split(",")]
-        info: dict[str, Any] = {
+        info: Dict[str, Any] = {
             "host": self.host,
             "module_position": self.module_position,
             "control_port": self.control_port,
@@ -693,9 +743,9 @@ class MTS4000:
                 "a local operator may be using the instrument"
             )
 
-    def function_states(self) -> dict[str, dict[str, bool | None]]:
+    def function_states(self) -> Dict[str, Dict[str, Optional[bool]]]:
         """Return ON/OFF state for the fiber functions on every module."""
-        states: dict[str, dict[str, bool | None]] = {}
+        states: Dict[str, Dict[str, Optional[bool]]] = {}
         for position in _POSITIONS:
             try:
                 listing = self.control.query(f"MOD:FUNC:LIST?{position}")
@@ -718,7 +768,7 @@ class MTS4000:
         return states
 
     def set_function(
-        self, function: str, enabled: bool, *, position: str | None = None
+        self, function: str, enabled: bool, *, position: Optional[str] = None
     ) -> None:
         """Switch a fiber function on a module ON/OFF (control port)."""
         position = position or self.module_position
@@ -733,7 +783,7 @@ class MTS4000:
         self,
         *,
         disable: Sequence[str] = ("OSA", "SOURCE", "POWERMETER", "OTDR-Y"),
-    ) -> dict[str, dict[str, bool | None]]:
+    ) -> Dict[str, Dict[str, Optional[bool]]]:
         """Turn off conflicting fiber functions and ensure the OTDR is ON.
 
         This changes the instrument's function state, so use it deliberately.
@@ -749,9 +799,9 @@ class MTS4000:
         return self.function_states()
 
     # -- configuration -----------------------------------------------------
-    def _read_lasers(self) -> list[dict[str, Any]]:
+    def _read_lasers(self) -> List[Dict[str, Any]]:
         """Return the laser set advertised by the installed module."""
-        lasers: list[dict[str, Any]] = []
+        lasers: List[Dict[str, Any]] = []
         count = self._safe_query("OTDSetup:LSET:NB?")
         try:
             n = int(count) if count else 0
@@ -770,7 +820,7 @@ class MTS4000:
             )
         return lasers
 
-    def _supported_lasers(self) -> list[str]:
+    def _supported_lasers(self) -> List[str]:
         """Return the laser keywords advertised by the installed module."""
         return [
             str(laser["name"]).strip().upper()
@@ -807,7 +857,7 @@ class MTS4000:
         """Read the current acquisition configuration."""
         self.select_otdr_tab()
         lasers = self._read_lasers()
-        indices: dict[str, float] = {}
+        indices: Dict[str, float] = {}
         for laser in lasers:
             name = laser["name"]
             index = self._safe_query(f"OTDSetup:N? {name}")
@@ -837,17 +887,17 @@ class MTS4000:
         *,
         wavelength: Any = None,
         pulse_width: Any = None,
-        range_km: float | None = None,
-        auto_range: bool | None = None,
+        range_km: Optional[float] = None,
+        auto_range: Optional[bool] = None,
         resolution: Any = None,
-        acquisition_mode: str | None = None,
-        acquisition_time_s: float | str | None = None,
-        short_acquisition: bool | None = None,
-        index_of_refraction: float | None = None,
-        splice_detection_db: float | None = None,
-        reflectance_detection_db: float | None = None,
-        end_of_fiber_db: float | None = None,
-        units: str | None = None,
+        acquisition_mode: Optional[str] = None,
+        acquisition_time_s: Optional[Union[float, str]] = None,
+        short_acquisition: Optional[bool] = None,
+        index_of_refraction: Optional[float] = None,
+        splice_detection_db: Optional[float] = None,
+        reflectance_detection_db: Optional[float] = None,
+        end_of_fiber_db: Optional[float] = None,
+        units: Optional[str] = None,
         check: bool = True,
     ) -> OTDRConfig:
         """Apply acquisition settings and return the resulting configuration.
@@ -876,16 +926,16 @@ class MTS4000:
             Event-detection thresholds.
         units:
             Display units (``km``, ``kft``, ``miles``, ``m``, ``ft``).
+
+        Every value is checked before the first setting is written, so a
+        refused value leaves the instrument as it was.
         """
         self.select_otdr_tab()
         if range_km is not None and auto_range is True:
             raise ValueError("range_km and auto_range=True are mutually exclusive")
-        if check:
-            self.query("*ESR?")  # discard stale bits from optional queries
 
-        def apply(command: str) -> None:
-            self.write(command, check=check)
-
+        # Build (and so validate) every command first; only reads happen here.
+        commands: List[str] = []
         if wavelength is not None:
             try:
                 target_lambda = normalise_wavelength(wavelength)
@@ -897,32 +947,32 @@ class MTS4000:
                     ) from None
                 raise
             self._validate_wavelength(target_lambda)
-            apply(f"OTDSetup:LASer {target_lambda}")
+            commands.append(f"OTDSetup:LASer {target_lambda}")
         else:
             target_lambda = None
         if pulse_width is not None:
             pulse = normalise_pulse_width(pulse_width)
             if target_lambda and target_lambda not in {"ALL", "AUTO"}:
-                apply(f"OTDSetup:LPULse {target_lambda},{pulse}")
+                commands.append(f"OTDSetup:LPULse {target_lambda},{pulse}")
             else:
-                apply(f"OTDSetup:PULSe {pulse}")
+                commands.append(f"OTDSetup:PULSe {pulse}")
         if range_km is not None:
-            apply("OTDSetup:RAUto NO")
-            apply(f"OTDSetup:KMRange {float(range_km):g}")
-        if auto_range is not None:
-            apply(f"OTDSetup:RAUto {'YES' if auto_range else 'NO'}")
+            commands.append("OTDSetup:RAUto NO")
+            commands.append(f"OTDSetup:KMRange {float(range_km):g}")
+        elif auto_range is not None:
+            commands.append(f"OTDSetup:RAUto {'YES' if auto_range else 'NO'}")
         if resolution is not None:
-            apply(f"OTDSetup:RESolution {normalise_resolution(resolution)}")
+            commands.append(f"OTDSetup:RESolution {normalise_resolution(resolution)}")
         if acquisition_mode is not None:
-            apply(
+            commands.append(
                 f"OTDSetup:ACQuisition {_normalise_acquisition_mode(acquisition_mode)}"
             )
         if acquisition_time_s is not None:
-            apply(
+            commands.append(
                 f"OTDSetup:MAXTime {_normalise_acquisition_time(acquisition_time_s)}"
             )
         if short_acquisition is not None:
-            apply(
+            commands.append(
                 f"OTDSetup:SACQuisition {'YES' if short_acquisition else 'NO'}"
             )
         if index_of_refraction is not None:
@@ -937,19 +987,24 @@ class MTS4000:
                 raise ValueError(
                     "select a single wavelength before setting index_of_refraction"
                 )
-            apply(f"OTDSetup:N {lam},{float(index_of_refraction):.5f}")
+            commands.append(f"OTDSetup:N {lam},{float(index_of_refraction):.5f}")
         if splice_detection_db is not None:
-            apply(
+            commands.append(
                 f"OTDSetup:DSPLice {int(round(float(splice_detection_db) * 100))}"
             )
         if reflectance_detection_db is not None:
-            apply(
+            commands.append(
                 f"OTDSetup:DREFlectance {int(round(float(reflectance_detection_db)))}"
             )
         if end_of_fiber_db is not None:
-            apply(f"OTDSetup:DFEnd {int(round(float(end_of_fiber_db)))}")
+            commands.append(f"OTDSetup:DFEnd {int(round(float(end_of_fiber_db)))}")
         if units is not None:
-            apply(f"OTDSetup:UNITs {_normalise_units(units)}")
+            commands.append(f"OTDSetup:UNITs {_normalise_units(units)}")
+
+        if check:
+            self.query("*ESR?")  # discard stale bits from optional queries
+        for command in commands:
+            self.write(command, check=check)
 
         return self.get_config()
 
@@ -976,6 +1031,12 @@ class MTS4000:
         ``start_grace`` tolerates the short delay between ``KEY BEGinacq`` and
         the status becoming ``IN_PROGRESS``.
         """
+        return self._wait_for_acquisition(timeout, poll, start_grace)[0]
+
+    def _wait_for_acquisition(
+        self, timeout: float, poll: float, start_grace: float
+    ) -> Tuple[str, bool]:
+        """``(last status, whether IN_PROGRESS was seen)`` once the acquisition stops."""
         deadline = time.monotonic() + timeout
         grace_deadline = time.monotonic() + min(start_grace, timeout)
         seen_progress = False
@@ -986,7 +1047,7 @@ class MTS4000:
                 seen_progress = True
             elif last == "STOPPED":
                 if seen_progress or time.monotonic() >= grace_deadline:
-                    return last
+                    return last, seen_progress
             elif last == "READ ONLY":
                 raise MTS4000Error(
                     "acquisition is READ ONLY; the OTDR tab is not the active "
@@ -1004,17 +1065,33 @@ class MTS4000:
         poll: float = 1.0,
         exclusive: bool = False,
         settle: float = 0.3,
-    ) -> dict[str, Any]:
-        """Run one acquisition and return :meth:`collect`."""
+        start_grace: float = 5.0,
+    ) -> Dict[str, Any]:
+        """Run one acquisition and return :meth:`collect`.
+
+        Raises :class:`MTS4000Error` when the acquisition did not start: the
+        status never showed ``IN_PROGRESS`` and the result's date
+        (``OTDResult:DATE?``) is still the previous one, so :meth:`collect`
+        would return the previous measurement.
+        """
         if exclusive:
             self.exclusive_otdr()
+        previous_date = self._safe_query("OTDResult:DATE?")
         self.start_acquisition()
-        self.wait_for_acquisition(timeout=timeout, poll=poll)
+        _, started = self._wait_for_acquisition(timeout, poll, start_grace)
+        if not started and self._safe_query("OTDResult:DATE?") == previous_date:
+            # The instrument's own reason, when it gives one (ESR and STATus:ERR?).
+            self.check_error("KEY BEGinacq")
+            raise MTS4000Error(
+                "the acquisition did not start: the status never showed "
+                f"IN_PROGRESS and the result is still the previous one "
+                f"(date {previous_date!r})"
+            )
         time.sleep(settle)
         return self.collect()
 
     # -- results -----------------------------------------------------------
-    def get_result_metadata(self) -> dict[str, Any]:
+    def get_result_metadata(self) -> Dict[str, Any]:
         """Read the metadata of the current acquisition."""
         return {
             "module": self._safe_query("OTDResult:MODUle?"),
@@ -1032,7 +1109,7 @@ class MTS4000:
             "acquisition_mode": self._safe_query("OTDResult:AQMode?"),
         }
 
-    def get_trace(self) -> dict[str, Any]:
+    def get_trace(self) -> Dict[str, Any]:
         """Return the current OTDR trace as raw counts and calibrated arrays.
 
         ``loss_db = y_scale * raw + y_offset`` (coefficients read from the
@@ -1067,14 +1144,14 @@ class MTS4000:
             "y_scale": y_scale,
         }
 
-    def get_events(self) -> dict[str, Any]:
+    def get_events(self) -> Dict[str, Any]:
         """Return the parsed OTDR event table."""
         self.select_otdr_tab()
         header = self._safe_query("TABle:TITle?") or ""
         summary = self._safe_query("TABle:TOP?") or ""
         size_text = self._safe_query("TABle:SIZe?")
         size = int(size_text) if size_text else 0
-        lines: list[str] = []
+        lines: List[str] = []
         # Table row 0 is the active row; real rows start at 1.
         for index in range(1, size + 1):
             line = self._safe_query(f"TABle:LINe? {index}")
@@ -1104,16 +1181,16 @@ class MTS4000:
         include_trace: bool = True,
         include_events: bool = True,
         include_sor: bool = True,
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """Collect configuration, metadata, trace, events and SOR data."""
-        result: dict[str, Any] = {
+        result: Dict[str, Any] = {
             "identity": {
                 "host": self.host,
                 "position": self.module_position,
                 "data_port": self.data_port,
                 "scpi_idn": self.scpi_idn,
             },
-            "config": asdict(self.get_config()),
+            "config": self.get_config().as_dict(),
             "metadata": self.get_result_metadata(),
         }
         if include_trace:
@@ -1126,14 +1203,14 @@ class MTS4000:
 
     def save_result(
         self,
-        directory: str | Path = ".",
-        stem: str | None = None,
+        directory: Union[str, Path] = ".",
+        stem: Optional[str] = None,
         *,
         include_trace: bool = True,
         include_events: bool = True,
         include_sor: bool = True,
-        result: dict[str, Any] | None = None,
-    ) -> dict[str, Path]:
+        result: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Path]:
         """Write ``.sor``, ``_trace.csv`` and ``.json`` result files.
 
         If *result* is supplied (for example the dict returned by
@@ -1155,7 +1232,7 @@ class MTS4000:
             serial = serial[2] if len(serial) > 2 else "unknown"
             stem = f"otdr_{serial}_{lam}_{stamp}"
         stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", stem)
-        paths: dict[str, Path] = {}
+        paths: Dict[str, Path] = {}
 
         json_payload = {
             "identity": result.get("identity"),
@@ -1193,7 +1270,7 @@ class MTS4000:
 # --------------------------------------------------------------------------- #
 # small converters
 # --------------------------------------------------------------------------- #
-def _to_float(value: str | None) -> float | None:
+def _to_float(value: Optional[str]) -> Optional[float]:
     if value is None:
         return None
     try:
@@ -1202,7 +1279,7 @@ def _to_float(value: str | None) -> float | None:
         return None
 
 
-def _to_int(value: str | None) -> int | None:
+def _to_int(value: Optional[str]) -> Optional[int]:
     if value is None:
         return None
     try:
@@ -1211,7 +1288,7 @@ def _to_int(value: str | None) -> int | None:
         return None
 
 
-def _normalise_acquisition_time(value: float | str) -> str:
+def _normalise_acquisition_time(value: Union[float, str]) -> str:
     if isinstance(value, str):
         text = value.strip().lower()
         if text in {"auto", "automatic"}:
@@ -1220,9 +1297,13 @@ def _normalise_acquisition_time(value: float | str) -> str:
             return "-1"
         value = float(text)
     seconds = float(value)
+    if seconds in (-2.0, -1.0):
+        # What OTDSetup:MAXTime? reports for auto/realtime, so that a value read
+        # with get_config() can be written back.
+        return str(int(seconds))
     if seconds <= 0:
         raise ValueError(
-            "acquisition_time_s must be > 0 (use 'auto' or 'realtime' for -2/-1)"
+            "acquisition_time_s must be > 0, 'auto' (-2) or 'realtime' (-1)"
         )
     return str(int(round(seconds)))
 
