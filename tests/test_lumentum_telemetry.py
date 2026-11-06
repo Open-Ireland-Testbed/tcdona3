@@ -1,5 +1,7 @@
 """``Lumentum.fetch_all_telemetry`` and the target-gain check of constant-gain mode (added in 1.2.0)."""
 
+import copy
+
 import pytest
 
 import tcdona3.lumentum as lumentum_module
@@ -51,8 +53,10 @@ def edit_count(fake):
 # ------------------------------------------------------------------------------------------- telemetry
 def test_fetch_all_reads_the_three_sources_as_their_own_methods_do(roadm):
     device, fake = roadm
-    connections, monitored, edfas = device.fetch_all_telemetry()
+    # A copy: get_edfa_info fills the dict it returned before, so the later reads would change it.
+    connections, monitored, edfas = copy.deepcopy(device.fetch_all_telemetry())
     assert len(fake.calls_to("get")) == 3
+    assert connections["mux"] and monitored["mux"] and edfas["booster"]
     assert connections == device.wss_get_connections()
     assert monitored == device.wss_get_monitored_channels()
     assert edfas == device.get_edfa_info()
