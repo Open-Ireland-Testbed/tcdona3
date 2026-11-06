@@ -57,8 +57,10 @@ device is being put back, Ctrl-C is held until it is done.
        laser (connecting switches the OTDR function on and shows the OTDR tab on the instrument's screen).
        With ``--acquire``, the requested settings and one acquisition: the laser fires into the fibre at the
        OTDR port, so use it only on a dark fibre.
-     - After ``--acquire``, in the same session, stops an acquisition still running and writes the saved
-       wavelength, pulse, range (or auto range), acquisition time and mode back. Ctrl-C ends the acquisition.
+     - After ``--acquire``, in the same session, stops an acquisition still running and writes back what it
+       changed: the wavelength and its pulse, the pulse of the wavelength it selected (pulses are set per
+       wavelength), the range (or auto range) and the acquisition time. When one of these cannot be read
+       first, it writes nothing. Ctrl-C ends the acquisition.
 
 Usage::
 

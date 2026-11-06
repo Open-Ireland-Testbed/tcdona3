@@ -4,6 +4,8 @@ No instrument is reached: :class:`fakes.FakeScpiTransport` stands for the two SC
 driver and answers from a scripted responder.
 """
 
+import socket
+
 import numpy as np
 import pytest
 
@@ -426,14 +428,14 @@ def _smoke_module():
     return module
 
 
-def _fake_instrument(monkeypatch, statuses=None, **state):
+def _fake_instrument(monkeypatch, statuses=None, transport=FakeScpiTransport, **state):
     """Patches the driver's sockets; returns the list of data-port transports the script opens."""
     opened = []
 
     def factory(host, port, timeout=10.0):
         if port == 8000:
             return FakeScpiTransport(responder=control_responder)
-        data = FakeScpiTransport(
+        data = transport(
             responder=data_responder,
             blocks={"CURve:BUFfer?": curve_payload([100, -200, 300, 0]), "OTDResult:SSOR?": b"SOR"},
             statuses=statuses,
@@ -468,3 +470,189 @@ def test_smoke_script_acquire_puts_auto_range_and_auto_time_back(monkeypatch, tm
     assert "OTDSetup:KMRange 40" in data.sent and "OTDSetup:MAXTime 10" in data.sent
     assert (data.state["auto_range"], data.state["max_time"]) == ("YES", "-2")
     assert sorted(path.suffix for path in tmp_path.iterdir()) == [".csv", ".json", ".sor"]
+
+
+# --------------------------------------------------------------------------- second review (Codex) follow-ups
+@pytest.fixture
+def scpi_pair():
+    """A real ``_SCPISocket`` on one end of a socket pair; the test writes the instrument's side."""
+    ours, instrument = socket.socketpair()
+    ours.settimeout(1.0)
+    scpi = mts4000._SCPISocket("instrument", 8002, timeout=1.0)
+    scpi._sock = ours
+    yield scpi, instrument
+    scpi.close()
+    instrument.close()
+
+
+@pytest.mark.parametrize("after_block", [b"\r\n20\n", b"\n20\n", b"20\n"])
+def test_a_block_terminator_arriving_after_the_block_is_not_read_as_the_next_reply(scpi_pair, after_block):
+    scpi, instrument = scpi_pair
+    instrument.sendall(b"#14ABCD")
+    assert scpi.read_block() == b"ABCD"
+    instrument.sendall(after_block)  # CRLF, LF or (other firmware) nothing before the next reply
+    assert scpi.read_line() == "20"
+
+
+@pytest.mark.parametrize("chunks", [(b"#14ABCD\r", b"\n20\n"), (b"#14ABCD\r\n", b"20\n")])
+def test_a_block_terminator_split_or_whole_is_dropped(scpi_pair, chunks):
+    scpi, instrument = scpi_pair
+    instrument.sendall(chunks[0])
+    assert scpi.read_block() == b"ABCD"
+    instrument.sendall(chunks[1])
+    assert scpi.read_line() == "20"
+
+
+def test_a_timeout_closes_the_socket_so_a_late_reply_is_never_read(scpi_pair):
+    scpi, instrument = scpi_pair
+    scpi._sock.settimeout(0.05)
+    with pytest.raises(mts4000.MTS4000TransportError):
+        scpi.query("OTDSetup:MAXTime?")
+    assert not scpi.connected  # a reply to MAXTime? arriving now can no longer be read
+    with pytest.raises(mts4000.MTS4000TransportError):
+        scpi.query("*ESR?")
+
+
+def test_a_query_that_times_out_does_not_shift_the_replies_of_the_next_ones(monkeypatch):
+    data_sessions = []
+
+    def factory(host, port, timeout=10.0):
+        if port == 8000:
+            return FakeScpiTransport(responder=control_responder)
+        first = not data_sessions
+
+        def responder(command, session):
+            if first and command == "OTDSetup:MAXTime?":
+                session.close()  # what _SCPISocket does on a timeout
+                raise mts4000.MTS4000TransportError("timeout")
+            return data_responder(command, session)
+
+        data = FakeScpiTransport(responder=responder)
+        data_sessions.append(data)
+        return data
+
+    monkeypatch.setattr(mts4000, "_SCPISocket", factory)
+    config = mts4000.MTS4000("192.0.2.10").connect().get_config()
+    assert config.acquisition_time_s is None  # the query that timed out
+    assert (config.units, config.splice_detection) == ("KM", 50)  # read on a new session, in step
+    assert len(data_sessions) == 2 and data_sessions[0].closed
+
+
+def test_a_failed_connect_closes_what_it_opened_and_a_retry_starts_afresh(monkeypatch):
+    opened, failing = [], [True]
+
+    def factory(host, port, timeout=10.0):
+        if port == 8000:
+            transport = FakeScpiTransport(responder=control_responder)
+        else:
+            def responder(command, session):
+                if command == "*IDN?" and failing[0]:
+                    failing[0] = False
+                    raise mts4000.MTS4000TransportError("timeout")
+                return data_responder(command, session)
+            transport = FakeScpiTransport(responder=responder)
+        opened.append(transport)
+        return transport
+
+    monkeypatch.setattr(mts4000, "_SCPISocket", factory)
+    device = mts4000.MTS4000("192.0.2.10")
+    with pytest.raises(mts4000.MTS4000TransportError):
+        device.connect()
+    assert len(opened) == 2 and all(transport.closed for transport in opened)
+    assert device._data is None and device._ctl is None
+    device.connect()
+    assert device.scpi_idn == IDN and len(opened) == 4
+
+
+class _StatusesUntilHalt(object):
+    """``STATus:ACQ?`` answers: the given items (an exception class is raised) until KEY HALTacq is sent."""
+
+    def __init__(self, transport, items, halts=True):
+        self.transport, self.items, self.halts = transport, list(items), halts
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.halts and "KEY HALTacq" in self.transport.sent:
+            return "STOPPED"
+        item = self.items.pop(0) if len(self.items) > 1 else self.items[0]
+        if isinstance(item, type) and issubclass(item, BaseException):
+            raise item
+        return item
+
+
+@pytest.mark.parametrize("statuses,error", [
+    (["IN_PROGRESS"], TimeoutError),
+    (["IN_PROGRESS", KeyboardInterrupt], KeyboardInterrupt),
+    (["IN_PROGRESS", mts4000.MTS4000TransportError], mts4000.MTS4000TransportError),
+])
+def test_acquire_stops_the_acquisition_when_waiting_fails(monkeypatch, capsys, statuses, error):
+    device, _, data = make_device(monkeypatch)
+    data.statuses = _StatusesUntilHalt(data, statuses)
+    with pytest.raises(error):
+        device.acquire(timeout=0.05, poll=0.0)
+    assert "KEY BEGinacq" in data.sent and "KEY HALTacq" in data.sent
+    assert data.sent.index("KEY HALTacq") > data.sent.index("KEY BEGinacq")
+    assert capsys.readouterr().err == ""
+
+
+def test_acquire_reports_a_stop_it_cannot_confirm(monkeypatch, capsys):
+    device, _, data = make_device(monkeypatch)
+    data.statuses = _StatusesUntilHalt(data, ["IN_PROGRESS"], halts=False)
+    with pytest.raises(TimeoutError):
+        device.acquire(timeout=0.05, poll=0.0)
+    assert "could not be confirmed stopped" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("settings", [
+    {"range_km": -1}, {"range_km": float("nan")}, {"range_km": 0}, {"resolution": ("manu", 0)},
+    {"resolution": -2.0}, {"splice_detection_db": float("inf")}, {"end_of_fiber_db": "high"},
+])
+def test_configure_refuses_impossible_numbers_before_writing(device, settings):
+    device, _, data = device
+    with pytest.raises(ValueError):
+        device.configure(wavelength=1550, **settings)
+    assert not [command for command in data.sent if command.startswith("OTDSetup:")]
+
+
+class _PerWavelengthPulses(FakeScpiTransport):
+    """An instrument whose pulse is set per wavelength, as on the MTS 4000 (LPULse sets one, PULSe the current)."""
+
+    def __init__(self, *args, **kwargs):
+        FakeScpiTransport.__init__(self, *args, **kwargs)
+        self.pulses = {"L1310": "P100NS", "L1550": "P2US"}
+        self.state["laser"] = "L1310"
+        self.state["pulse"] = self.pulses["L1310"]
+
+    def _track(self, command):
+        text = command.strip()
+        if text.startswith("OTDSetup:LASer "):
+            self.state["laser"] = text.split(None, 1)[1]
+        elif text.startswith("OTDSetup:LPULse "):
+            laser, pulse = text.split(None, 1)[1].split(",")
+            self.pulses[laser] = pulse
+        elif text.startswith("OTDSetup:PULSe "):
+            self.pulses[self.state["laser"]] = text.split(None, 1)[1]
+        else:
+            FakeScpiTransport._track(self, command)
+        self.state["pulse"] = self.pulses.get(self.state["laser"])
+
+
+def test_smoke_script_puts_back_the_pulse_of_each_wavelength_it_changed(monkeypatch, tmp_path):
+    opened = _fake_instrument(monkeypatch, statuses=("IN_PROGRESS", "STOPPED"), transport=_PerWavelengthPulses)
+    argv = ["192.0.2.10", "--acquire", "--wavelength", "1550", "--pulse", "100ns", "--output", str(tmp_path)]
+    assert _smoke_module().main(argv) == 0
+    data, = opened
+    assert "OTDSetup:LPULse L1550,P100NS" in data.sent
+    assert data.state["laser"] == "L1310"
+    assert data.pulses == {"L1310": "P100NS", "L1550": "P2US"}
+
+
+def test_smoke_script_writes_nothing_when_a_setting_it_would_change_cannot_be_read(monkeypatch, tmp_path):
+    opened = _fake_instrument(monkeypatch, statuses=("IN_PROGRESS", "STOPPED"), max_time="")
+    argv = ["192.0.2.10", "--acquire", "--time", "10", "--output", str(tmp_path)]
+    assert _smoke_module().main(argv) == 1
+    data, = opened
+    assert not [command for command in data.sent if command.startswith("OTDSetup:")]
+    assert "KEY BEGinacq" not in data.sent

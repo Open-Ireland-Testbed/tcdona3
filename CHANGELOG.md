@@ -23,10 +23,13 @@ defaults are unchanged.
 ### New
 
 - `MTS4000`, `MTS4000Error`, `OTDRConfig` (`tcdona3.mts4000`): VIAVI MTS/T-BERD 4000 OTDR over its SCPI
-  ports. Configure, acquire (refuses to return the previous result when the acquisition did not start),
-  trace, event table, `.sor`, save to `.json`/`.csv`/`.sor`, identify. Runs on Python 3.6. The OTDR is not in
-  the booking database, so the driver does not check bookings. Hardware smoke script:
-  `tests/hardware/smoke_mts4000.py` (read-only by default).
+  ports. Configure, acquire, trace, event table, `.sor`, save to `.json`/`.csv`/`.sor`, identify. Runs on
+  Python 3.6. `acquire()` refuses to return the previous result when the acquisition did not start, and stops
+  the acquisition when waiting for it fails or is interrupted. A timeout or lost connection closes that
+  socket (`MTS4000TransportError`) and the next command opens a new session, so a late reply is never read
+  as the answer to another command. `configure()` refuses keywords, lasers and numbers it can check before
+  writing anything. The OTDR is not in the booking database, so the driver does not check bookings.
+  Hardware smoke script: `tests/hardware/smoke_mts4000.py` (read-only by default).
 - `Lumentum.fetch_all_telemetry(fetch="all")`: WSS connections, OCM monitored channels and EDFA states in one
   call, or only some of them (one NETCONF get each). Values are those of `wss_get_connections`,
   `wss_get_monitored_channels` and `get_edfa_info`; a part not asked for is `None`.

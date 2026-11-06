@@ -51,8 +51,10 @@ Important operational notes
 import copy
 import csv
 import json
+import math
 import re
 import socket
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -155,6 +157,15 @@ class MTS4000Error(RuntimeError):
     """Raised for transport failures or SCPI command errors."""
 
 
+class MTS4000TransportError(MTS4000Error):
+    """The connection failed, closed or timed out.
+
+    The socket it happened on is closed at once: a reply that arrives late
+    would otherwise be read as the answer to the next command.  The driver
+    opens a new session on its next command.
+    """
+
+
 # --------------------------------------------------------------------------- #
 # value normalisation helpers
 # --------------------------------------------------------------------------- #
@@ -226,7 +237,7 @@ def normalise_resolution(value: Any) -> str:
         mode_kw = _RESOLUTION_MODES.get(str(mode).strip().lower())
         if mode_kw is None:
             raise ValueError(f"unknown resolution mode {mode!r}")
-        return f"{mode_kw},{float(metres):g}"
+        return f"{mode_kw},{_resolution_metres(metres, mode_kw):g}"
     if isinstance(value, str):
         text = value.strip()
         if "," in text:
@@ -241,8 +252,28 @@ def normalise_resolution(value: Any) -> str:
             raise ValueError(
                 f"unknown resolution {value!r}; use auto/hres/hdyn or metres"
             ) from exc
-        return f"MANU,{metres:g}"
-    return f"MANU,{float(value):g}"
+        return f"MANU,{_resolution_metres(metres, 'MANU'):g}"
+    return f"MANU,{_resolution_metres(value, 'MANU'):g}"
+
+
+def _resolution_metres(value: Any, mode: str) -> float:
+    metres = _finite(value, "resolution")
+    if mode == "MANU" and metres <= 0:
+        raise ValueError(f"a manual resolution must be > 0 m, not {value!r}")
+    if metres < 0:
+        raise ValueError(f"resolution must not be negative, not {value!r}")
+    return metres
+
+
+def _finite(value: Any, name: str) -> float:
+    """``value`` as a finite float, or ValueError naming ``name``."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a number, not {value!r}") from exc
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be a finite number, not {value!r}")
+    return number
 
 
 def _normalise_acquisition_mode(value: Any) -> str:
@@ -280,7 +311,12 @@ def _normalise_units(value: Any) -> str:
 # low-level SCPI transport
 # --------------------------------------------------------------------------- #
 class _SCPISocket:
-    """Line-oriented SCPI socket with IEEE-488.2 definite-length block reads."""
+    """Line-oriented SCPI socket with IEEE-488.2 definite-length block reads.
+
+    A transport failure (timeout, reset, closed by the peer) closes the socket
+    and raises :class:`MTS4000TransportError`; a closed socket is never read
+    again, so replies cannot be paired with the wrong command.
+    """
 
     def __init__(self, host: str, port: int, timeout: float = 10.0):
         self.host = host
@@ -288,6 +324,7 @@ class _SCPISocket:
         self.timeout = timeout
         self._sock: Optional[socket.socket] = None
         self._buf = b""
+        self._after_block = False
 
     def connect(self) -> "_SCPISocket":
         if self._sock is not None:
@@ -295,6 +332,7 @@ class _SCPISocket:
         self._sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
         self._sock.settimeout(self.timeout)
         self._buf = b""
+        self._after_block = False
         return self
 
     def close(self) -> None:
@@ -303,38 +341,60 @@ class _SCPISocket:
                 self._sock.close()
             finally:
                 self._sock = None
-                self._buf = b""
+        self._buf = b""
+        self._after_block = False
 
     @property
     def connected(self) -> bool:
         return self._sock is not None
 
+    def _fail(self, message: str, exc: Optional[BaseException] = None) -> None:
+        self.close()
+        raise MTS4000TransportError(message) from exc
+
     def _recv(self) -> None:
         if self._sock is None:
-            raise MTS4000Error("socket is not connected")
+            raise MTS4000TransportError(f"{self.host}:{self.port} is not connected")
         try:
             chunk = self._sock.recv(65536)
         except socket.timeout as exc:
-            raise MTS4000Error(
-                f"timeout talking to {self.host}:{self.port}"
-            ) from exc
+            self._fail(f"timeout talking to {self.host}:{self.port}", exc)
         except OSError as exc:
-            raise MTS4000Error(
-                f"connection error on {self.host}:{self.port}: {exc}"
-            ) from exc
+            self._fail(f"connection error on {self.host}:{self.port}: {exc}", exc)
         if not chunk:
-            raise MTS4000Error(f"{self.host}:{self.port} closed the connection")
+            self._fail(f"{self.host}:{self.port} closed the connection")
         self._buf += chunk
 
     def send(self, command: str) -> None:
         if self._sock is None:
-            raise MTS4000Error("not connected; call connect() first")
+            raise MTS4000TransportError(f"{self.host}:{self.port} is not connected")
         try:
             self._sock.sendall(command.strip().encode("ascii") + b"\r\n")
         except OSError as exc:
-            raise MTS4000Error(f"failed to send {command!r}: {exc}") from exc
+            self._fail(f"failed to send {command!r}: {exc}", exc)
+
+    def _drop_block_terminator(self, wait: bool = True) -> None:
+        """Drop the CRLF (or LF) some firmware sends after a block.
+
+        TCP may deliver it after the block, even split between CR and LF, so it
+        is dropped when the next reply is read rather than only when it came
+        with the block.  Firmware that sends nothing after a block is fine: the
+        next reply then does not start with CR or LF.
+        """
+        while self._after_block:
+            if self._buf.startswith(b"\r\n"):
+                self._buf = self._buf[2:]
+            elif self._buf.startswith(b"\n"):
+                self._buf = self._buf[1:]
+            elif self._buf in (b"", b"\r"):
+                if not wait:
+                    return
+                self._recv()
+                continue
+            self._after_block = False
 
     def read_line(self) -> str:
+        self._drop_block_terminator()
         while b"\n" not in self._buf:
             self._recv()
         line, self._buf = self._buf.split(b"\n", 1)
@@ -342,15 +402,18 @@ class _SCPISocket:
 
     def read_block(self) -> bytes:
         """Read an IEEE-488.2 ``#<n><length><payload>`` block."""
+        self._drop_block_terminator()
         while len(self._buf) < 2:
             self._recv()
         if self._buf[:1] != b"#":
             # Not a block: surface the (probably error) line instead.
             line = self.read_line()
             raise MTS4000Error(f"expected a binary block, got {line!r}")
+        if not self._buf[1:2].isdigit():
+            self._fail(f"malformed block header {self._buf[:2]!r} from {self.host}:{self.port}")
         ndigits = int(chr(self._buf[1]))
         if ndigits == 0:
-            raise MTS4000Error("indefinite-length SCPI blocks are not supported")
+            self._fail("indefinite-length SCPI blocks are not supported")
         while len(self._buf) < 2 + ndigits:
             self._recv()
         length = int(self._buf[2 : 2 + ndigits])
@@ -359,11 +422,8 @@ class _SCPISocket:
             self._recv()
         payload = self._buf[2 + ndigits : total]
         self._buf = self._buf[total:]
-        # Some firmware appends CRLF after the block.
-        if self._buf.startswith(b"\r\n"):
-            self._buf = self._buf[2:]
-        elif self._buf.startswith(b"\n"):
-            self._buf = self._buf[1:]
+        self._after_block = True
+        self._drop_block_terminator(wait=False)
         return payload
 
     def query(self, command: str) -> str:
@@ -578,36 +638,52 @@ class MTS4000:
 
     # -- lifecycle ---------------------------------------------------------
     def connect(self) -> "MTS4000":
-        if self._data is not None:
+        """Open the session: control port, OTDR function on, data port, OTDR tab.
+
+        Also called on the next command after a transport failure closed the
+        data socket.  When it fails, everything it opened is closed again, so
+        the next call starts afresh instead of finding a half-open session.
+        """
+        if self._data is not None and self._data.connected:
             return self
-        if self._ctl is None:
-            self._ctl = _SCPISocket(self.host, self.control_port, self.timeout).connect()
-            self._ctl.send("*REM")  # enter remote mode
-        position = self.module_position or self._discover_position()
-        self.module_position = position
-        self._ctl.send(f'MOD:FUNC:SELECT {position},"{self.function}",ON')
-        time.sleep(self.settle_s)
-        port_text = self._ctl.query(f'MOD:FUNC:PORT? {position},"{self.function}"')
         try:
-            self.data_port = int(port_text.strip())
-        except ValueError as exc:
-            raise MTS4000Error(
-                f"could not resolve {self.function} port (reply {port_text!r})"
-            ) from exc
-        self._data = _SCPISocket(self.host, self.data_port, self.timeout).connect()
-        self._data.send("*REM")
-        self.scpi_idn = self._data.query("*IDN?")
-        # Reading clears any stale bits left by a previous session/operator.
-        self._data.query("*ESR?")
-        self.select_otdr_tab()
+            control = self._open_control()
+            position = self.module_position or self._discover_position()
+            self.module_position = position
+            control.send(f'MOD:FUNC:SELECT {position},"{self.function}",ON')
+            time.sleep(self.settle_s)
+            port_text = control.query(f'MOD:FUNC:PORT? {position},"{self.function}"')
+            try:
+                self.data_port = int(port_text.strip())
+            except ValueError as exc:
+                raise MTS4000Error(
+                    f"could not resolve {self.function} port (reply {port_text!r})"
+                ) from exc
+            if self._data is not None:
+                self._data.close()
+            self._data = _SCPISocket(self.host, self.data_port, self.timeout).connect()
+            self._data.send("*REM")
+            self.scpi_idn = self._data.query("*IDN?")
+            # Reading clears any stale bits left by a previous session/operator.
+            self._data.query("*ESR?")
+            self.select_otdr_tab()
+        except BaseException:
+            self.close()
+            raise
         return self
 
+    def _open_control(self) -> _SCPISocket:
+        """The control socket, opened again (in remote mode) if a failure closed it."""
+        if self._ctl is None or not self._ctl.connected:
+            self._ctl = _SCPISocket(self.host, self.control_port, self.timeout).connect()
+            self._ctl.send("*REM")  # enter remote mode
+        return self._ctl
+
     def _discover_position(self) -> str:
-        assert self._ctl is not None
         first_error: Optional[Exception] = None
         for position in _POSITIONS:
             try:
-                functions = self._ctl.query(f"MOD:FUNC:LIST?{position}")
+                functions = self._open_control().query(f"MOD:FUNC:LIST?{position}")
             except MTS4000Error as exc:
                 first_error = first_error or exc
                 continue
@@ -634,7 +710,7 @@ class MTS4000:
 
     # -- low-level access --------------------------------------------------
     def _require_data(self) -> _SCPISocket:
-        if self._data is None:
+        if self._data is None or not self._data.connected:
             self.connect()
         assert self._data is not None
         return self._data
@@ -645,10 +721,9 @@ class MTS4000:
 
     @property
     def control(self) -> _SCPISocket:
-        if self._ctl is None:
+        if self._ctl is None and self._data is None:
             self.connect()
-        assert self._ctl is not None
-        return self._ctl
+        return self._open_control()
 
     def write(self, command: str, *, check: bool = True) -> None:
         """Send a set command and (optionally) verify the event register."""
@@ -670,16 +745,19 @@ class MTS4000:
 
         An unsupported/empty reply sets the SCPI event-status error bit, so the
         register is consumed here to keep it from being mistaken for a later
-        configuration failure.
+        configuration failure.  A query that times out also gives ``None``: its
+        socket is closed (see :class:`MTS4000TransportError`) and the next
+        command opens a new session, so a late reply is never read as the
+        answer to another query.
         """
         try:
             value = self.query(command)
-        except MTS4000Error:
-            value = ""
+        except MTS4000TransportError:
+            return None
         if value == "":
             try:
                 self.query("*ESR?")  # clear a possible "undefined header" bit
-            except MTS4000Error:
+            except MTS4000TransportError:
                 pass
             return None
         return value
@@ -927,8 +1005,11 @@ class MTS4000:
         units:
             Display units (``km``, ``kft``, ``miles``, ``m``, ``ft``).
 
-        Every value is checked before the first setting is written, so a
-        refused value leaves the instrument as it was.
+        The values the driver can check (keywords, the lasers the module
+        advertises, positive and finite numbers) are checked before the first
+        setting is written.  A value only the instrument can refuse (a range
+        the module does not offer, for example) raises :class:`MTS4000Error`
+        after the settings before it were written.
         """
         self.select_otdr_tab()
         if range_km is not None and auto_range is True:
@@ -957,8 +1038,11 @@ class MTS4000:
             else:
                 commands.append(f"OTDSetup:PULSe {pulse}")
         if range_km is not None:
+            km = _finite(range_km, "range_km")
+            if km <= 0:
+                raise ValueError(f"range_km must be > 0, not {range_km!r}")
             commands.append("OTDSetup:RAUto NO")
-            commands.append(f"OTDSetup:KMRange {float(range_km):g}")
+            commands.append(f"OTDSetup:KMRange {km:g}")
         elif auto_range is not None:
             commands.append(f"OTDSetup:RAUto {'YES' if auto_range else 'NO'}")
         if resolution is not None:
@@ -990,14 +1074,18 @@ class MTS4000:
             commands.append(f"OTDSetup:N {lam},{float(index_of_refraction):.5f}")
         if splice_detection_db is not None:
             commands.append(
-                f"OTDSetup:DSPLice {int(round(float(splice_detection_db) * 100))}"
+                "OTDSetup:DSPLice "
+                f"{int(round(_finite(splice_detection_db, 'splice_detection_db') * 100))}"
             )
         if reflectance_detection_db is not None:
             commands.append(
-                f"OTDSetup:DREFlectance {int(round(float(reflectance_detection_db)))}"
+                "OTDSetup:DREFlectance "
+                f"{int(round(_finite(reflectance_detection_db, 'reflectance_detection_db')))}"
             )
         if end_of_fiber_db is not None:
-            commands.append(f"OTDSetup:DFEnd {int(round(float(end_of_fiber_db)))}")
+            commands.append(
+                f"OTDSetup:DFEnd {int(round(_finite(end_of_fiber_db, 'end_of_fiber_db')))}"
+            )
         if units is not None:
             commands.append(f"OTDSetup:UNITs {_normalise_units(units)}")
 
@@ -1073,12 +1161,21 @@ class MTS4000:
         status never showed ``IN_PROGRESS`` and the result's date
         (``OTDResult:DATE?``) is still the previous one, so :meth:`collect`
         would return the previous measurement.
+
+        When waiting fails (timeout, lost connection, Ctrl-C), the acquisition
+        is stopped (``KEY HALTacq``, on a new session if needed) before the
+        error is raised, so the laser is not left firing; a stop that cannot
+        be confirmed is reported on stderr.
         """
         if exclusive:
             self.exclusive_otdr()
         previous_date = self._safe_query("OTDResult:DATE?")
         self.start_acquisition()
-        _, started = self._wait_for_acquisition(timeout, poll, start_grace)
+        try:
+            _, started = self._wait_for_acquisition(timeout, poll, start_grace)
+        except BaseException:
+            self._halt_after_failure()
+            raise
         if not started and self._safe_query("OTDResult:DATE?") == previous_date:
             # The instrument's own reason, when it gives one (ESR and STATus:ERR?).
             self.check_error("KEY BEGinacq")
@@ -1089,6 +1186,27 @@ class MTS4000:
             )
         time.sleep(settle)
         return self.collect()
+
+    def _halt_after_failure(self, attempts: int = 5) -> None:
+        """Stop the acquisition :meth:`acquire` started, after waiting for it failed.
+
+        Never raises (the caller re-raises the original error): a stop that
+        cannot be sent or confirmed is reported on stderr.
+        """
+        try:
+            self.stop_acquisition()
+            for _ in range(attempts):
+                if self.acquisition_status() != "IN_PROGRESS":
+                    return
+                time.sleep(1.0)
+            problem = "it still reports IN_PROGRESS"
+        except Exception as exc:  # noqa: BLE001 - reported; the original error is raised
+            problem = f"{type(exc).__name__}: {exc}"
+        print(
+            f"[MTS4000] the acquisition on {self.host} could not be confirmed "
+            f"stopped ({problem}); stop it at the instrument",
+            file=sys.stderr,
+        )
 
     # -- results -----------------------------------------------------------
     def get_result_metadata(self) -> Dict[str, Any]:
@@ -1329,6 +1447,7 @@ def connect(host: str = DEFAULT_HOST, **kwargs: Any) -> MTS4000:
 __all__ = [
     "MTS4000",
     "MTS4000Error",
+    "MTS4000TransportError",
     "OTDRConfig",
     "DEFAULT_HOST",
     "CONTROL_PORT",
