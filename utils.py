@@ -1,7 +1,7 @@
 import mysql.connector
 import os
 import math
-import pkg_resources
+import sys
 import pandas as pd
 import warnings
 import functools
@@ -57,23 +57,31 @@ def check_patch_owners(patch_list, enabled=None):
 
     The check is enabled by default.  Set ``enabled=False`` (or set
     ``TCDONA3_BOOKING_CHECK`` to one of ``0``, ``false``, ``no`` or ``off``)
-    to skip the provisioning-database query.
+    to skip the provisioning-database query, e.g. outside the lab where the
+    database cannot be reached.  A skipped check prints a warning on stderr
+    every time, naming the devices nobody checked.
 
     :param patch_list: A list of patches, where each patch is a tuple/list of device names.
     :type patch_list: list
 
     :param enabled: Whether to run the booking check.  ``None`` reads
-        ``TCDONA3_BOOKING_CHECK`` (default: enabled).
+        ``TCDONA3_BOOKING_CHECK`` (default: enabled); ``True`` runs it whatever
+        the variable says.
     :type enabled: bool or None
 
     :return: True if all devices are unbooked or booked by current user, False otherwise.
     :rtype: bool
     """
     if enabled is None:
-        enabled = os.getenv("TCDONA3_BOOKING_CHECK", "1").strip().lower() not in (
-            _BOOKING_CHECK_DISABLED_VALUES
-        )
+        setting = os.getenv("TCDONA3_BOOKING_CHECK", "1")
+        enabled = setting.strip().lower() not in _BOOKING_CHECK_DISABLED_VALUES
+        reason = "TCDONA3_BOOKING_CHECK=%s" % setting
+    else:
+        reason = "check_patch_owners(..., enabled=False)"
     if not enabled:
+        devices = sorted({device for patch in patch_list for device in patch if device != "NULL"})
+        print("[CHECK_OWNERS] Booking check skipped (%s): nobody checked that you may use %s."
+              % (reason, ", ".join(devices) or "these devices"), file=sys.stderr)
         return True
 
     allowed_users = set()
@@ -188,8 +196,10 @@ def abs_to_dbm(absolute_value):
 
 
 def load_csv_with_pandas(filename):
-    # Get the path to the CSV file within the installed package
-    csv_path = pkg_resources.resource_filename("tcdona3", filename)
+    # The CSV files ship inside the package, next to this module. (This used
+    # pkg_resources, which needs setuptools at run time: without it every
+    # driver importing tcdona3.utils was silently left out of `import tcdona3`.)
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), filename)
 
     # Load the CSV file with pandas
     df = pd.read_csv(csv_path)
