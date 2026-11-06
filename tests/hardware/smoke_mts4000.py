@@ -13,12 +13,14 @@ the instrument's shared screen, as every :class:`MTS4000` session does.
 
 With ``--acquire`` it applies the requested settings, runs one acquisition, saves the ``.json`` /
 ``_trace.csv`` / ``.sor`` files under ``--output`` and then, in the same session, stops the acquisition
-if it is still running and puts back what it changed: the wavelength and its pulse, the pulse of the
-wavelength it selected (pulses are set per wavelength), the range or auto range and the acquisition
-time.  This also happens when a check fails or the run is interrupted with Ctrl-C.  Ctrl-C during the
-acquisition ends it; Ctrl-C during the restore is held until the restore is done.  When a setting it
-would change could not be read first, it writes nothing and fails.  The script exits non-zero when a
-check or the restore fails.  Measured values are printed only with ``--show-values``.
+if it is still running and writes back the settings read at the start: the wavelength and its pulse,
+the pulse of the wavelength it selected (pulses are set per wavelength), the range or auto range and
+the acquisition time, whatever the flags (an acquisition in auto mode may choose its own pulse and
+range).  It then reads them again and fails when they differ from the start.  This also happens when a
+check fails or the run is interrupted with Ctrl-C.  Ctrl-C during the acquisition ends it; Ctrl-C during
+the restore is held until the restore is done.  When one of these settings cannot be read at the start,
+it does not acquire.  The script exits non-zero when a check or the restore fails.  Measured values are
+printed only with ``--show-values``.
 """
 
 import argparse
@@ -68,38 +70,40 @@ def same_wavelength(first, second):
     return (first or "").strip().upper() == (second or "").strip().upper()
 
 
-def baseline_gaps(config, args):
-    """The settings ``--acquire`` would change but that could not be read first, so not put back."""
+def baseline_gaps(config):
+    """The settings ``--acquire`` puts back that could not be read at the start."""
     gaps = []
-    if args.wavelength is not None or args.pulse is not None:
-        if not config.wavelength:
-            gaps.append("wavelength")
-        if not config.pulse_width:
-            gaps.append("pulse width")
-    if args.range_km is not None:
-        if config.auto_range is None or (not config.auto_range and config.range_km is None):
-            gaps.append("range")
-    if args.time is not None and config.acquisition_time_s is None:
+    if not config.wavelength:
+        gaps.append("wavelength")
+    if not config.pulse_width:
+        gaps.append("pulse width")
+    if config.auto_range is None or (not config.auto_range and config.range_km is None):
+        gaps.append("range")
+    if config.acquisition_time_s is None:
         gaps.append("acquisition time")
     return gaps
 
 
-def restore_plan(config, args):
-    """``configure()`` calls that put back what ``--acquire`` changes, applied in order.
+def restore_plan(config):
+    """``configure()`` calls that put the settings of ``config`` back, applied in order.
 
+    All of them, whatever the flags: an acquisition in auto mode may change the pulse and range itself.
     :func:`run_acquire` adds one in front for the pulse of the wavelength it selects."""
-    original = {}
-    if args.wavelength is not None or args.pulse is not None:
-        original["wavelength"] = config.wavelength
-        original["pulse_width"] = config.pulse_width
-    if args.range_km is not None:
-        if config.auto_range:
-            original["auto_range"] = True
-        else:
-            original["range_km"] = config.range_km
-    if args.time is not None:
-        original["acquisition_time_s"] = config.acquisition_time_s
-    return [original] if original else []
+    original = {"wavelength": config.wavelength, "pulse_width": config.pulse_width,
+                "acquisition_time_s": config.acquisition_time_s}
+    if config.auto_range:
+        original["auto_range"] = True
+    else:
+        original["range_km"] = config.range_km
+    return [original]
+
+
+def restored_differences(start, now):
+    """The settings of ``restore_plan`` that read differently now than at the start."""
+    names = ["wavelength", "pulse_width", "auto_range", "acquisition_time_s"]
+    if not start.auto_range:
+        names.append("range_km")
+    return [name for name in names if getattr(start, name) != getattr(now, name)]
 
 
 def run_read_only(device, checks, args):
@@ -136,7 +140,7 @@ def run_read_only(device, checks, args):
 def run_acquire(device, checks, args, plan):
     if args.wavelength is not None:
         selected = device.configure(wavelength=args.wavelength)
-        if args.pulse is not None and not same_wavelength(selected.wavelength, plan[0]["wavelength"]):
+        if not same_wavelength(selected.wavelength, plan[-1]["wavelength"]):
             # The pulse is set per wavelength: note this wavelength's own before changing it.
             if not selected.pulse_width:
                 raise MTS4000Error("could not read the pulse of %s, so it would not be put back"
@@ -176,14 +180,18 @@ def stop_if_running(device, checks):
         checks.check("acquisition stopped", False, str(exc))
 
 
-def restore(device, checks, plan):
+def restore(device, checks, plan, start):
     for settings in plan:
         try:
             device.configure(**settings)
         except (MTS4000Error, OSError, ValueError) as exc:
-            checks.check("restore: %s put back" % ", ".join(sorted(settings)), False, str(exc))
-        else:
-            checks.check("restore: %s put back" % ", ".join(sorted(settings)), True)
+            checks.check("restore: %s written back" % ", ".join(sorted(settings)), False, str(exc))
+    try:
+        different = restored_differences(start, device.get_config())
+    except (MTS4000Error, OSError, ValueError) as exc:
+        checks.check("restore: settings read back", False, str(exc))
+    else:
+        checks.check("restore: settings back to those at the start", different == [], different)
 
 
 def reopen(device, checks):
@@ -196,7 +204,7 @@ def reopen(device, checks):
 
 
 def acquire_and_restore(device, checks, args, config):
-    plan = restore_plan(config, args)
+    plan = restore_plan(config)
     cut_off = False
     try:
         run_acquire(device, checks, args, plan)
@@ -211,7 +219,7 @@ def acquire_and_restore(device, checks, args, config):
             if cut_off:
                 reopen(device, checks)
             stop_if_running(device, checks)
-            restore(device, checks, plan)
+            restore(device, checks, plan, config)
 
 
 def main(argv=None):
@@ -236,10 +244,10 @@ def main(argv=None):
                          device.data_port)
             config = run_read_only(device, checks, args)
             if args.acquire:
-                gaps = baseline_gaps(config, args)
+                gaps = baseline_gaps(config)
                 if gaps:
-                    checks.check("--acquire: %s could not be read, so nothing is written" % ", ".join(gaps),
-                                 False)
+                    checks.check("--acquire: %s could not be read to be put back, so no acquisition"
+                                 % ", ".join(gaps), False)
                 else:
                     acquire_and_restore(device, checks, args, config)
     except KeyboardInterrupt:  # before any setting was written: nothing to put back

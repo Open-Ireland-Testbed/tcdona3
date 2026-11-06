@@ -567,15 +567,15 @@ def test_a_failed_connect_closes_what_it_opened_and_a_retry_starts_afresh(monkey
 class _StatusesUntilHalt(object):
     """``STATus:ACQ?`` answers: the given items (an exception class is raised) until KEY HALTacq is sent."""
 
-    def __init__(self, transport, items, halts=True):
-        self.transport, self.items, self.halts = transport, list(items), halts
+    def __init__(self, transport, items, halts=True, after_halt="STOPPED"):
+        self.transport, self.items, self.halts, self.after_halt = transport, list(items), halts, after_halt
 
     def __iter__(self):
         return self
 
     def __next__(self):
         if self.halts and "KEY HALTacq" in self.transport.sent:
-            return "STOPPED"
+            return self.after_halt
         item = self.items.pop(0) if len(self.items) > 1 else self.items[0]
         if isinstance(item, type) and issubclass(item, BaseException):
             raise item
@@ -649,10 +649,60 @@ def test_smoke_script_puts_back_the_pulse_of_each_wavelength_it_changed(monkeypa
     assert data.pulses == {"L1310": "P100NS", "L1550": "P2US"}
 
 
-def test_smoke_script_writes_nothing_when_a_setting_it_would_change_cannot_be_read(monkeypatch, tmp_path):
+def test_smoke_script_does_not_acquire_when_a_setting_it_restores_cannot_be_read(monkeypatch, tmp_path):
     opened = _fake_instrument(monkeypatch, statuses=("IN_PROGRESS", "STOPPED"), max_time="")
     argv = ["192.0.2.10", "--acquire", "--time", "10", "--output", str(tmp_path)]
     assert _smoke_module().main(argv) == 1
     data, = opened
     assert not [command for command in data.sent if command.startswith("OTDSetup:")]
     assert "KEY BEGinacq" not in data.sent
+
+
+# --------------------------------------------------------------------------- Codex re-check follow-ups
+def test_acquire_stops_the_acquisition_after_ctrl_c_right_after_the_start(monkeypatch):
+    device, _, data = make_device(monkeypatch)
+    data.statuses = _StatusesUntilHalt(data, ["IN_PROGRESS"])
+
+    def sleep(seconds):
+        if "KEY BEGinacq" in data.sent and "KEY HALTacq" not in data.sent:
+            raise KeyboardInterrupt  # in the pauses of start_acquisition, after the start was sent
+
+    monkeypatch.setattr(mts4000.time, "sleep", sleep)
+    with pytest.raises(KeyboardInterrupt):
+        device.acquire(timeout=5.0, poll=0.0)
+    assert data.sent.index("KEY HALTacq") > data.sent.index("KEY BEGinacq")
+
+
+def test_a_read_only_status_does_not_count_as_stopped(monkeypatch, capsys):
+    device, _, data = make_device(monkeypatch)
+    data.statuses = _StatusesUntilHalt(data, ["IN_PROGRESS"], after_halt="READ ONLY")
+    with pytest.raises(TimeoutError):
+        device.acquire(timeout=0.05, poll=0.0)
+    assert "could not be confirmed stopped" in capsys.readouterr().err
+
+
+class _AutoMode(FakeScpiTransport):
+    """An instrument in auto acquisition mode: the acquisition chooses its own pulse and range."""
+
+    def _track(self, command):
+        FakeScpiTransport._track(self, command)
+        if command.strip() == "KEY BEGinacq":
+            self.state["pulse"], self.state["range_km"] = "P1US", "80"
+
+
+def test_smoke_script_puts_back_what_an_auto_acquisition_changed(monkeypatch, tmp_path):
+    opened = _fake_instrument(monkeypatch, statuses=("IN_PROGRESS", "STOPPED"), transport=_AutoMode)
+    assert _smoke_module().main(["192.0.2.10", "--acquire", "--output", str(tmp_path)]) == 0
+    data, = opened
+    assert (data.state["pulse"], data.state["range_km"]) == ("P100NS", "20")
+
+
+def test_smoke_script_fails_when_the_settings_do_not_read_back_as_at_the_start(monkeypatch, tmp_path, capsys):
+    class _IgnoresTheRange(_AutoMode):
+        def _track(self, command):
+            if not command.startswith("OTDSetup:KMRange"):
+                _AutoMode._track(self, command)
+
+    _fake_instrument(monkeypatch, statuses=("IN_PROGRESS", "STOPPED"), transport=_IgnoresTheRange)
+    assert _smoke_module().main(["192.0.2.10", "--acquire", "--output", str(tmp_path)]) == 1
+    assert "restore: settings back to those at the start" in capsys.readouterr().out

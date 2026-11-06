@@ -24,8 +24,8 @@ defaults are unchanged.
 
 - `MTS4000`, `MTS4000Error`, `OTDRConfig` (`tcdona3.mts4000`): VIAVI MTS/T-BERD 4000 OTDR over its SCPI
   ports. Configure, acquire, trace, event table, `.sor`, save to `.json`/`.csv`/`.sor`, identify. Runs on
-  Python 3.6. `acquire()` refuses to return the previous result when the acquisition did not start, and stops
-  the acquisition when waiting for it fails or is interrupted. A timeout or lost connection closes that
+  Python 3.6. `acquire()` refuses to return the previous result when the acquisition did not start, and sends
+  a stop (and waits for STOPPED) when starting or waiting fails or is interrupted. A timeout or lost connection closes that
   socket (`MTS4000TransportError`) and the next command opens a new session, so a late reply is never read
   as the answer to another command. `configure()` refuses keywords, lasers and numbers it can check before
   writing anything. The OTDR is not in the booking database, so the driver does not check bookings.

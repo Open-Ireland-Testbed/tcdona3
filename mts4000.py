@@ -1162,16 +1162,17 @@ class MTS4000:
         (``OTDResult:DATE?``) is still the previous one, so :meth:`collect`
         would return the previous measurement.
 
-        When waiting fails (timeout, lost connection, Ctrl-C), the acquisition
-        is stopped (``KEY HALTacq``, on a new session if needed) before the
-        error is raised, so the laser is not left firing; a stop that cannot
-        be confirmed is reported on stderr.
+        When starting or waiting fails (timeout, lost connection, Ctrl-C), the
+        driver sends ``KEY HALTacq`` (on a new session if needed) before the
+        error is raised, and waits for the status to read ``STOPPED``; a stop
+        it cannot confirm is reported on stderr.
         """
         if exclusive:
             self.exclusive_otdr()
         previous_date = self._safe_query("OTDResult:DATE?")
-        self.start_acquisition()
         try:
+            # Inside the try: Ctrl-C in the pauses right after KEY BEGinacq must stop it too.
+            self.start_acquisition()
             _, started = self._wait_for_acquisition(timeout, poll, start_grace)
         except BaseException:
             self._halt_after_failure()
@@ -1191,15 +1192,17 @@ class MTS4000:
         """Stop the acquisition :meth:`acquire` started, after waiting for it failed.
 
         Never raises (the caller re-raises the original error): a stop that
-        cannot be sent or confirmed is reported on stderr.
+        cannot be sent or confirmed (status ``STOPPED``) is reported on stderr.
         """
         try:
             self.stop_acquisition()
+            status = ""
             for _ in range(attempts):
-                if self.acquisition_status() != "IN_PROGRESS":
+                status = self.acquisition_status()
+                if status == "STOPPED":
                     return
                 time.sleep(1.0)
-            problem = "it still reports IN_PROGRESS"
+            problem = f"its status is {status!r}"
         except Exception as exc:  # noqa: BLE001 - reported; the original error is raised
             problem = f"{type(exc).__name__}: {exc}"
         print(
