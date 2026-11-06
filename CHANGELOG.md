@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.2.0
+
+New: a driver for the VIAVI MTS 4000 OTDR, selective Lumentum telemetry, a target-gain check on the Lumentum
+EDFAs, a way to skip the booking check outside the lab, and `pyproject.toml`. Existing signatures and
+defaults are unchanged.
+
+### What existing scripts may notice
+
+- **Lumentum target gain is checked:** `set_mux_constant_gain`, `set_demux_constant_gain` and
+  `edfa_config(..., control_mode="constant-gain")` refuse a target gain outside the device's range (booster
+  4-27 dB, preamp 10-30.5 dB) with `ValueError`, before the EDFA is taken out of service. Before, the
+  amplifier went out of service and the device's refusal left it there. `edfa_config` in constant-gain mode
+  needs a `target_gain` (its default, 0.0, is outside both ranges).
+- **TeraFlex (NETCONF `TFlex`):** `delete_logical_interface`, `get_power_and_frequency` and
+  `set_power_and_frequency` name the logical channel and the optical-channel component by their keys
+  (`index`, `name`) as direct children of the list entry, as NETCONF requires; the delete sends only the key.
+- **`import tcdona3` without setuptools:** `utils.py` no longer imports `pkg_resources`. Where setuptools was
+  missing (a fresh virtual environment, setuptools 81+), every driver that imports `tcdona3.utils` was
+  silently left out of `tcdona3`.
+
+### New
+
+- `MTS4000`, `MTS4000Error`, `OTDRConfig` (`tcdona3.mts4000`): VIAVI MTS/T-BERD 4000 OTDR over its SCPI
+  ports. Configure, acquire (refuses to return the previous result when the acquisition did not start),
+  trace, event table, `.sor`, save to `.json`/`.csv`/`.sor`, identify. Runs on Python 3.6. The OTDR is not in
+  the booking database, so the driver does not check bookings. Hardware smoke script:
+  `tests/hardware/smoke_mts4000.py` (read-only by default).
+- `Lumentum.fetch_all_telemetry(fetch="all")`: WSS connections, OCM monitored channels and EDFA states in one
+  call, or only some of them (one NETCONF get each). Values are those of `wss_get_connections`,
+  `wss_get_monitored_channels` and `get_edfa_info`; a part not asked for is `None`.
+- `Lumentum(..., gain_limits={"booster": (7.0, 27.0), "preamp": (11.0, 30.0)})`: narrower target-gain limits,
+  within the device's ranges.
+- Booking check: `TCDONA3_BOOKING_CHECK=0` (or `false`, `no`, `off`) or `check_patch_owners(...,
+  enabled=False)` skips it, with a warning on stderr each time (see the README).
+- `pyproject.toml` for `pip install -e .` from a checkout (Python 3.7+); the lab hosts still install as in
+  `DEPLOY.MD`.
+
 ## 1.1.0
 
 New features of the Lumentum, ILA, Yokogawa and TeraFlex SSH drivers, with a backward-compatibility test suite

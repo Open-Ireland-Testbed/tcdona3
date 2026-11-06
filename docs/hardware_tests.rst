@@ -8,7 +8,8 @@ to check a device before an experiment. pytest does not collect them: they are r
 Before running them
 -------------------
 
-* Book the device: the Lumentum, ILA and Yokogawa drivers refuse a device booked by someone else.
+* Book the device: the Lumentum, ILA and Yokogawa drivers refuse a device booked by someone else. The OTDR
+  (MTS 4000) is not in the booking database: agree its use with whoever has its fibre patched.
 * Install the drivers' dependencies (see the README). The ILA needs paramiko older than 5 (3.x or 4.x).
 * Run them from the directory that contains the ``tcdona3`` package.
 * Credentials are never in the scripts: the TeraFlex and Yokogawa scripts read them from a JSON file given as
@@ -51,6 +52,13 @@ device is being put back, Ctrl-C is held until it is done.
        legacy EDFA setters.
      - Writes back every connection, EDFA and port that differs from the saved running configuration, and
        brings the line back (see below).
+   * - ``smoke_mts4000.py``
+     - Nothing by default: it reads identity, settings, the last result, trace and events, and never fires the
+       laser (connecting switches the OTDR function on and shows the OTDR tab on the instrument's screen).
+       With ``--acquire``, the requested settings and one acquisition: the laser fires into the fibre at the
+       OTDR port, so use it only on a dark fibre.
+     - After ``--acquire``, in the same session, stops an acquisition still running and writes the saved
+       wavelength, pulse, range (or auto range), acquisition time and mode back. Ctrl-C ends the acquisition.
 
 Usage::
 
@@ -58,6 +66,7 @@ Usage::
     python3 tcdona3/tests/hardware/smoke_yokogawa.py <credentials>.json
     python3 tcdona3/tests/hardware/smoke_ila.py <ila>
     python3 tcdona3/tests/hardware/smoke_lumentum.py <roadm> [--edfa-writes] [--unblock]
+    python3 tcdona3/tests/hardware/smoke_mts4000.py [host] [--acquire --wavelength 1550 --pulse 100ns --range-km 20 --time 10]
 
 ``--edfa-writes`` interrupts the line
 -------------------------------------
