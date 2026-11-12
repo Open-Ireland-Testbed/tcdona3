@@ -6,6 +6,7 @@ tcdona3
 
    polatis
    teraflex
+   galileo_gnmi
    quadflex
    bbsource
    utils

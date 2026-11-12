@@ -20,6 +20,7 @@ Contents
    dicon
    cassini
    teraflex
+   galileo_gnmi
    quadflex
    osa
    ila

@@ -52,6 +52,20 @@ _try_import("quadflex", ["QuadFlex"])
 _try_import("teraflex", ["TeraFlex"])
 _try_import("teraflex_paramiko", ["TeraFlexParamiko"])
 
+# Galileo gNMI APIs (read-only monitoring and write queries)
+_try_import(
+    "galileo_gnmi",
+    [
+        "GalileoTerraFlexAPI",
+        "GalileoTerraFlexWriteQueries",
+        "ReadOnlyGNMISession",
+        "TerraFlexComponent",
+        "TerraFlexLineStatus",
+        "TerraFlexLogicalChannelStatus",
+        "TerraFlexSetQuery",
+    ],
+)
+
 # Utilities (functions/constants only; safe to expose if import works)
 _try_import("utils", ["check_patch_owners", "load_csv_with_pandas"])  # extend if needed
 
